@@ -3,12 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>macOS Port Manager</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔌</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔌%3C/text%3E%3C/svg%3E">
 </head>
 <body>
   <!-- Toast Notification Container -->
@@ -38,6 +36,15 @@
         </button>
       </div>
     </header>
+
+    <!-- Local-only safety notice -->
+    <section class="safety-banner glass" aria-label="Port Manager safety notice">
+      <div class="safety-icon">🛡️</div>
+      <div>
+        <h2>Local-only controls with destructive-action guardrails</h2>
+        <p>Terminate is disabled for this UI server and system ports. Restart stays disabled until the backend exposes an explicit allowlist. No remote fonts or telemetry are loaded.</p>
+      </div>
+    </section>
 
     <!-- Metrics Cards Grid -->
     <section class="metrics-grid">
@@ -117,11 +124,11 @@
   </div>
 
   <!-- Confirmation Modal -->
-  <div id="confirm-modal" class="modal-overlay hidden">
+  <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc modal-warning confirm-help">
     <div class="modal-card glass">
       <div class="modal-header">
         <h2 id="modal-title">Confirm Action</h2>
-        <button class="btn-close-modal" id="modal-close-btn">&times;</button>
+        <button class="btn-close-modal" id="modal-close-btn" aria-label="Close confirmation dialog">&times;</button>
       </div>
       <div class="modal-body">
         <p id="modal-desc">Are you sure you want to perform this action?</p>
@@ -143,9 +150,19 @@
             <span class="preview-value font-mono command-text" id="preview-command">--</span>
           </div>
         </div>
-        <p class="modal-warning">
-          ⚠️ <strong>Caution:</strong> Killing critical system processes or active background servers can cause data loss or system instability. Make sure you know what this process is.
+        <p class="modal-warning" id="modal-warning">
+          ⚠️ <strong>Caution:</strong> Terminating a process sends a <code>SIGTERM</code> signal. This can cause data loss, corrupted files, or crashed services — especially for databases, servers, or long-running tasks.
         </p>
+        <div class="confirm-gate" id="confirm-help">
+          <label class="confirm-field" for="confirm-pid-input">
+            Type PID <span id="confirm-required-pid" class="font-mono">--</span> to enable terminate
+            <input id="confirm-pid-input" class="confirm-input font-mono" inputmode="numeric" autocomplete="off" placeholder="Enter PID exactly">
+          </label>
+          <label class="confirm-checkbox">
+            <input id="confirm-understand-checkbox" type="checkbox">
+            I understand this is destructive and may stop unsaved work.
+          </label>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
@@ -155,11 +172,11 @@
   </div>
 
   <!-- Details Modal -->
-  <div id="details-modal" class="modal-overlay hidden">
+  <div id="details-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="details-title">
     <div class="modal-card glass">
       <div class="modal-header">
-        <h2>Process Specifications</h2>
-        <button class="btn-close-modal" id="details-close-btn">&times;</button>
+        <h2 id="details-title">Process Specifications</h2>
+        <button class="btn-close-modal" id="details-close-btn" aria-label="Close details dialog">&times;</button>
       </div>
       <div class="modal-body">
         <div class="spec-grid">

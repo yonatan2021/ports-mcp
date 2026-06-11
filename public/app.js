@@ -5,6 +5,7 @@ let activeFilter = 'all'; // 'all', 'user', 'system'
 let searchQuery = '';
 let currentSort = { column: 'port', order: 'asc' };
 let pollIntervalId = null;
+let destructiveActionContext = null;
 const POLL_INTERVAL = 8000; // 8 seconds
 
 // Self Port detection based on the loaded URL
@@ -31,6 +32,9 @@ const elements = {
   modalConfirmBtn: document.getElementById('modal-confirm-btn'),
   modalCancelBtn: document.getElementById('modal-cancel-btn'),
   modalCloseBtn: document.getElementById('modal-close-btn'),
+  confirmPidInput: document.getElementById('confirm-pid-input'),
+  confirmUnderstandCheckbox: document.getElementById('confirm-understand-checkbox'),
+  confirmRequiredPid: document.getElementById('confirm-required-pid'),
   previewPort: document.getElementById('preview-port'),
   previewProcess: document.getElementById('preview-process'),
   previewPid: document.getElementById('preview-pid'),
@@ -102,10 +106,13 @@ function setupEventListeners() {
   // Confirm Modal Close
   const closeConfirmModal = () => {
     elements.confirmModal.classList.add('hidden');
+    resetDestructiveConfirmation();
     startPolling();
   };
   elements.modalCancelBtn.addEventListener('click', closeConfirmModal);
   elements.modalCloseBtn.addEventListener('click', closeConfirmModal);
+  elements.confirmPidInput.addEventListener('input', validateDestructiveConfirmation);
+  elements.confirmUnderstandCheckbox.addEventListener('change', validateDestructiveConfirmation);
   elements.confirmModal.addEventListener('click', (e) => {
     if (e.target === elements.confirmModal) closeConfirmModal();
   });
@@ -150,7 +157,7 @@ async function fetchPorts() {
   
   try {
     const response = await fetch('/api/ports');
-    if (!response.ok) throw new Error('API server returned an error');
+    if (!response.ok) throw new Error('Port Manager API returned an error');
     const data = await response.json();
     portsData = data.ports || [];
     applyFilters();
@@ -159,11 +166,11 @@ async function fetchPorts() {
     elements.tableBody.innerHTML = `
       <tr>
         <td colspan="7" class="loading-state" style="color: var(--color-danger)">
-          ⚠️ Failed to connect to the Port Manager service.
+          ⚠️ Cannot reach Port Manager. Ensure the server is running at <code>http://127.0.0.1:${selfPort}</code> and restart it if needed.
         </td>
       </tr>
     `;
-    showToast('Failed to connect to backend service', 'error');
+    showToast('Connection lost. Is the server still running?', 'error');
   }
 }
 
@@ -257,23 +264,36 @@ function renderTable() {
 
   filteredPorts.forEach(portObj => {
     const tr = document.createElement('tr');
-    const isSelf = portObj.port === selfPort;
+    const portNumber = Number(portObj.port);
+    const portText = escapeHtml(String(portObj.port ?? ''));
+    const pidText = escapeHtml(String(portObj.pid ?? ''));
+    const isSelf = portNumber === selfPort;
+    const isSystemPort = Number.isFinite(portNumber) && portNumber <= 1024;
+    const killDisabled = isSelf || isSystemPort;
+    const killDisabledReason = isSelf
+      ? 'Self-protection: this is the Port Manager UI server and cannot terminate itself.'
+      : isSystemPort
+        ? 'System-port protection: ports 1024 and below require backend-level explicit allowSystem; the UI keeps them disabled.'
+        : `Terminate PID ${portObj.pid} on port ${portObj.port} — requires typed confirmation.`;
 
     // Port Badge Class
     let badgeClass = 'port-badge';
     if (isSelf) {
       badgeClass += ' self';
-    } else if (portObj.port <= 1024) {
+    } else if (isSystemPort) {
       badgeClass += ' system';
     }
 
     // Command display truncation
     const cmdClean = (portObj.commandLine || '').replace(/\n/g, ' ');
     const processIcon = getProcessIcon(portObj.processName);
+    const protocol = escapeHtml(portObj.protocol || 'UNKNOWN');
+    const protocolClass = safeClassName(portObj.protocol || 'unknown');
+    const type = escapeHtml(portObj.type || 'unknown');
 
     tr.innerHTML = `
       <td>
-        <span class="${badgeClass}">${portObj.port}</span>
+        <span class="${badgeClass}">${portText}</span>
       </td>
       <td>
         <div class="process-name-cell">
@@ -281,29 +301,29 @@ function renderTable() {
           <span class="process-title">${escapeHtml(portObj.processName)}</span>
         </div>
       </td>
-      <td class="font-mono">${portObj.pid}</td>
+      <td class="font-mono">${pidText}</td>
       <td>${escapeHtml(portObj.user)}</td>
       <td>
-        <span class="protocol-badge ${portObj.protocol.toLowerCase()}">${portObj.protocol} (${portObj.type})</span>
+        <span class="protocol-badge ${protocolClass}">${protocol} (${type})</span>
       </td>
       <td class="command-cell" title="${escapeHtml(cmdClean)}">
         ${escapeHtml(cmdClean)}
       </td>
       <td class="text-right">
         <div class="action-group">
-          <button class="action-btn btn-details-action" title="View details and full command">
+          <button class="action-btn btn-details-action" title="View details and full command" aria-label="View details and full command for PID ${pidText} on port ${portText}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="16" x2="12" y2="12"></line>
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
           </button>
-          <button class="action-btn btn-restart-action" disabled title="Restart is disabled until an explicit allowlist exists">
+          <button class="action-btn btn-restart-action" disabled aria-disabled="true" title="Restart disabled: arbitrary command restart is not available until a backend allowlist exists">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
           </button>
-          <button class="action-btn btn-kill-action" ${isSelf ? 'disabled' : ''} title="Kill process on port ${portObj.port}">
+          <button class="action-btn btn-kill-action" ${killDisabled ? 'disabled aria-disabled="true"' : ''} title="${escapeHtml(killDisabledReason)}" aria-label="${escapeHtml(killDisabledReason)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
               <line x1="12" y1="2" x2="12" y2="12"></line>
@@ -318,7 +338,7 @@ function renderTable() {
       openDetailsModal(portObj);
     });
 
-    if (!isSelf) {
+    if (!killDisabled) {
       tr.querySelector('.btn-kill-action').addEventListener('click', () => {
         openConfirmModal('kill', portObj);
       });
@@ -338,20 +358,27 @@ function openConfirmModal(action, portObj) {
   elements.previewPid.textContent = portObj.pid;
   elements.previewCommand.textContent = portObj.commandLine;
 
+  // Prepare confirmation gate
+  resetDestructiveConfirmation();
+  destructiveActionContext = { action, pid: String(portObj.pid) };
+  elements.confirmRequiredPid.textContent = String(portObj.pid);
+
   if (action === 'kill') {
-    elements.modalTitle.textContent = 'Terminate Process';
-    elements.modalDesc.textContent = `Are you sure you want to kill the following process? This will close the connection and free up port ${portObj.port}.`;
+    elements.modalTitle.textContent = 'Confirm terminate process';
+    elements.modalDesc.textContent = `This will send SIGTERM to PID ${portObj.pid} on port ${portObj.port}. Use it only when you recognize the process and are ready to stop it.`;
     elements.modalConfirmBtn.textContent = 'Terminate Process';
     elements.modalConfirmBtn.className = 'btn btn-danger';
+    elements.modalConfirmBtn.disabled = true;
     
     // Set confirmation button callback
     elements.modalConfirmBtn.onclick = async () => {
+      if (!validateDestructiveConfirmation(portObj)) return;
       elements.modalConfirmBtn.disabled = true;
-      elements.modalConfirmBtn.textContent = 'Killing...';
+      elements.modalConfirmBtn.textContent = 'Terminating...';
       
       const success = await executeKill(portObj.pid, portObj.port);
-      elements.modalConfirmBtn.disabled = false;
       elements.confirmModal.classList.add('hidden');
+      resetDestructiveConfirmation();
       
       if (success) {
         fetchPorts();
@@ -360,29 +387,38 @@ function openConfirmModal(action, portObj) {
       }
     };
   } else if (action === 'restart') {
-    elements.modalTitle.textContent = 'Restart Port Process';
-    elements.modalDesc.textContent = `This will terminate the active process and attempt to re-run the original command on port ${portObj.port}.`;
-    elements.modalConfirmBtn.textContent = 'Restart Process';
-    elements.modalConfirmBtn.className = 'btn btn-primary';
-    
-    elements.modalConfirmBtn.onclick = async () => {
-      elements.modalConfirmBtn.disabled = true;
-      elements.modalConfirmBtn.textContent = 'Restarting...';
-      
-      const success = await executeRestart(portObj.pid, portObj.port, portObj.commandLine);
-      elements.modalConfirmBtn.disabled = false;
-      elements.confirmModal.classList.add('hidden');
-      
-      if (success) {
-        // Wait 1.5s for process to start before scanner reads again
-        setTimeout(fetchPorts, 1500);
-      } else {
-        startPolling();
-      }
-    };
+    elements.modalTitle.textContent = 'Restart unavailable';
+    elements.modalDesc.textContent = `Restart is disabled for port ${portObj.port}. Re-running arbitrary command lines is unsafe until the backend exposes an explicit command allowlist.`;
+    elements.modalConfirmBtn.textContent = 'Restart Disabled';
+    elements.modalConfirmBtn.className = 'btn btn-secondary';
+    elements.modalConfirmBtn.disabled = true;
+    elements.modalConfirmBtn.onclick = null;
   }
 
   elements.confirmModal.classList.remove('hidden');
+  elements.confirmPidInput.focus();
+}
+
+function resetDestructiveConfirmation() {
+  destructiveActionContext = null;
+  elements.confirmPidInput.value = '';
+  elements.confirmUnderstandCheckbox.checked = false;
+  elements.confirmRequiredPid.textContent = '--';
+  elements.modalConfirmBtn.disabled = true;
+}
+
+function validateDestructiveConfirmation(portObj = null) {
+  const activeAction = portObj && typeof portObj.pid !== 'undefined'
+    ? 'kill'
+    : destructiveActionContext?.action;
+  const requiredPid = portObj && typeof portObj.pid !== 'undefined'
+    ? String(portObj.pid)
+    : destructiveActionContext?.pid || elements.confirmRequiredPid.textContent;
+  const typedPidMatches = elements.confirmPidInput.value.trim() === requiredPid && requiredPid !== '--';
+  const checkboxChecked = elements.confirmUnderstandCheckbox.checked;
+  const isValid = activeAction === 'kill' && typedPidMatches && checkboxChecked;
+  elements.modalConfirmBtn.disabled = !isValid;
+  return isValid;
 }
 
 function openDetailsModal(portObj) {
@@ -446,11 +482,15 @@ async function executeRestart() {
 // --- UTILITIES ---
 function escapeHtml(str) {
   if (!str) return '';
-  return str.replace(/&/g, '&amp;')
+  return String(str).replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+}
+
+function safeClassName(str) {
+  return String(str || 'unknown').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 }
 
 function getProcessIcon(processName) {
