@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>macOS Port Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔌</text></svg>">
+</head>
+<body>
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Main App Layout -->
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <span class="logo">🔌</span>
+        <div class="brand-text">
+          <h1>Port Manager</h1>
+          <p class="subtitle">macOS System Port Monitor & Controller</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="status-indicator">
+          <span class="status-pulse"></span>
+          <span class="status-text">Server Active</span>
+        </div>
+        <button id="refresh-btn" class="btn btn-primary btn-refresh">
+          <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          Refresh Scan
+        </button>
+      </div>
+    </header>
+
+    <!-- Metrics Cards Grid -->
+    <section class="metrics-grid">
+      <div class="metric-card glass">
+        <div class="metric-icon active-icon">📊</div>
+        <div class="metric-content">
+          <h3>Active Connections</h3>
+          <p id="metric-active-count" class="metric-value">--</p>
+        </div>
+      </div>
+      <div class="metric-card glass">
+        <div class="metric-icon dev-icon">💻</div>
+        <div class="metric-content">
+          <h3>User Space Ports (>1024)</h3>
+          <p id="metric-user-count" class="metric-value">--</p>
+        </div>
+      </div>
+      <div class="metric-card glass">
+        <div class="metric-icon system-icon">🛡️</div>
+        <div class="metric-content">
+          <h3>System Ports (&le;1024)</h3>
+          <p id="metric-system-count" class="metric-value">--</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Controller Controls -->
+    <section class="controls-panel glass">
+      <div class="search-wrapper">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search by port, PID, process name, or command line..." autocomplete="off">
+      </div>
+      
+      <div class="filter-tabs">
+        <button class="filter-tab active" data-filter="all">All Ports</button>
+        <button class="filter-tab" data-filter="user">User Space (>1024)</button>
+        <button class="filter-tab" data-filter="system">System (&le;1024)</button>
+      </div>
+    </section>
+
+    <!-- Ports Display Area -->
+    <main class="ports-container glass">
+      <div class="table-wrapper">
+        <table class="ports-table">
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="port">Port <span class="sort-indicator">▲</span></th>
+              <th class="sortable" data-sort="processName">Process Name</th>
+              <th class="sortable" data-sort="pid">PID</th>
+              <th class="sortable" data-sort="user">User</th>
+              <th>Protocol / Type</th>
+              <th>Startup Command</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ports-table-body">
+            <tr>
+              <td colspan="7" class="loading-state">
+                <div class="spinner"></div>
+                Scanning macOS ports...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon">🔍</div>
+        <h3>No active ports found</h3>
+        <p>Try clearing filters or checking if other applications are running.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal-card glass">
+      <div class="modal-header">
+        <h2 id="modal-title">Confirm Action</h2>
+        <button class="btn-close-modal" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="modal-desc">Are you sure you want to perform this action?</p>
+        <div class="process-preview-box">
+          <div class="preview-row">
+            <span class="preview-label">Port:</span>
+            <span class="preview-value" id="preview-port">--</span>
+          </div>
+          <div class="preview-row">
+            <span class="preview-label">Process:</span>
+            <span class="preview-value font-bold" id="preview-process">--</span>
+          </div>
+          <div class="preview-row">
+            <span class="preview-label">PID:</span>
+            <span class="preview-value font-mono" id="preview-pid">--</span>
+          </div>
+          <div class="preview-row command-row">
+            <span class="preview-label">Command:</span>
+            <span class="preview-value font-mono command-text" id="preview-command">--</span>
+          </div>
+        </div>
+        <p class="modal-warning">
+          ⚠️ <strong>Caution:</strong> Killing critical system processes or active background servers can cause data loss or system instability. Make sure you know what this process is.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="modal-confirm-btn">Terminate Process</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Details Modal -->
+  <div id="details-modal" class="modal-overlay hidden">
+    <div class="modal-card glass">
+      <div class="modal-header">
+        <h2>Process Specifications</h2>
+        <button class="btn-close-modal" id="details-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="spec-grid">
+          <div class="spec-item">
+            <span class="spec-label">Port</span>
+            <span class="spec-val" id="spec-port">--</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Process Name</span>
+            <span class="spec-val" id="spec-name">--</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Process ID (PID)</span>
+            <span class="spec-val font-mono" id="spec-pid">--</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Owner/User</span>
+            <span class="spec-val" id="spec-user">--</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">Protocol</span>
+            <span class="spec-val" id="spec-protocol">--</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">IP Type</span>
+            <span class="spec-val" id="spec-type">--</span>
+          </div>
+        </div>
+        <div class="spec-command-section">
+          <span class="spec-label">Full Startup Command Line</span>
+          <div class="command-box-wrapper">
+            <pre class="command-pre"><code id="spec-command">--</code></pre>
+            <button class="btn btn-copy" id="btn-copy-command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-copy">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="details-ok-btn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "name": "ports-mcp",
+  "version": "1.0.0",
+  "description": "Local-only macOS port manager with a guarded MCP stdio server and optional web UI.",
+  "main": "server.js",
+  "bin": {
+    "ports-mcp": "src/mcp-server.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "HOST=127.0.0.1 PORT=9999 node server.js",
+    "mcp": "node src/mcp-server.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "port-manager",
+    "macos",
+    "process-manager",
+    "mcp",
+    "sysadmin"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yonatan2021/ports-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yonatan2021/ports-mcp/issues"
+  },
+  "homepage": "https://github.com/yonatan2021/ports-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^4.19.2",
+    "zod": "^4.4.3"
+  }
+}
