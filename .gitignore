@@ -1,0 +1,86 @@
+# === Node.js ===
+node_modules/
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+.yarn/
+.pnpm/
+.pnpm-store/
+
+# === Environment & Secrets ===
+.env
+.env.*
+!.env.example
+*.local
+secrets/
+credentials/
+
+# === macOS ===
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100*
+.fseventsd*
+.Spotlight-V100*
+.TemporaryItems*
+.Trashes*
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# === Logs & Output ===
+logs/
+*.log
+*.out
+*.err
+coverage/
+.tmp/
+temp/
+tmp/
+
+# === IDE & Editor ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.orig
+*.bak
+.cursor/
+.project
+.classpath
+.settings/
+*.sublime-workspace
+
+# === OS & System ===
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# === Build & Dist ===
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# === Testing ===
+coverage/
+.nyc_output/
+.jest-cache/
+*.test.js.snap
+
+# === Docker ===
+.docker/
+docker-compose.override.yml
+
+# === Hermes (local dev) ===
+.hermes/
+
+# === Misc ===
+*.pem
+*.key
+*.crt
+*.cert
+*.pub
