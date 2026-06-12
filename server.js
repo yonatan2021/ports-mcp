@@ -1,4 +1,5 @@
-const { createApp } = require('./src/http-server');
+const http = require('node:http');
+const { createApp, SERVER_TIMEOUT_MS, HEADERS_TIMEOUT_MS } = require('./src/http-server');
 const { SafetyConfig } = require('./src/config');
 const { SafetyLayer } = require('./src/safety');
 const { createPortService } = require('./src/port-service');
@@ -14,9 +15,13 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
 const config = new SafetyConfig();
 const safetyLayer = new SafetyLayer({ config });
 const service = createPortService({ safetyLayer });
-const app = createApp({ service });
+const app = createApp({ service, safetyLayer, config });
+const server = http.createServer(app);
 
-app.listen(PORT, HOST, () => {
+server.timeout = SERVER_TIMEOUT_MS;
+server.headersTimeout = HEADERS_TIMEOUT_MS;
+
+server.listen(PORT, HOST, () => {
   console.log(`Port Manager running at http://${HOST}:${PORT}`);
   console.log(`Safety mode: ${config.mode}`);
 });
