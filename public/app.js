@@ -269,20 +269,39 @@ function renderTable() {
     const pidText = escapeHtml(String(portObj.pid ?? ''));
     const isSelf = portNumber === selfPort;
     const isSystemPort = Number.isFinite(portNumber) && portNumber <= 1024;
-    const killDisabled = isSelf || isSystemPort;
+    const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
+    const killDisabled = isSelf || isSystemPort || isReadOnlyMode;
     const killDisabledReason = isSelf
       ? 'Self-protection: this is the Port Manager UI server and cannot terminate itself.'
       : isSystemPort
         ? 'System-port protection: ports 1024 and below require backend-level explicit allowSystem; the UI keeps them disabled.'
-        : `Terminate PID ${portObj.pid} on port ${portObj.port} — requires typed confirmation.`;
+        : isReadOnlyMode
+          ? 'Server is in read-only mode. Switch to Allowlist or Blocklist mode in Settings to enable termination.'
+          : `Terminate PID ${portObj.pid} on port ${portObj.port} — requires typed confirmation.`;
 
     // Port Badge Class
     let badgeClass = 'port-badge';
+    let safetyClass = '';
     if (isSelf) {
       badgeClass += ' self';
+      safetyClass = ' self';
     } else if (isSystemPort) {
       badgeClass += ' system';
+      safetyClass = ' system';
+    } else if (typeof window.SafetySettings !== 'undefined') {
+      // Check safety state for non-self, non-system ports
+      const ss = window.SafetySettings.getState();
+      if (ss) {
+        if (ss.mode === 'allowlist') {
+          const isListed = (ss.allowlist || []).includes(portNumber);
+          safetyClass = isListed ? ' safe' : ' protected';
+        } else if (ss.mode === 'blocklist') {
+          const isBlocked = (ss.blocklist || []).includes(portNumber);
+          safetyClass = isBlocked ? ' protected' : ' safe';
+        }
+      }
     }
+    if (safetyClass) badgeClass += safetyClass;
 
     // Command display truncation
     const cmdClean = (portObj.commandLine || '').replace(/\n/g, ' ');
@@ -533,3 +552,6 @@ function showToast(message, type = 'info') {
   // Auto-dismiss
   setTimeout(dismiss, 5000);
 }
+
+// Make showToast globally accessible for settings.js
+window.showToast = showToast;
