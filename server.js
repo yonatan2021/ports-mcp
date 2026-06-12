@@ -1,4 +1,7 @@
 const { createApp } = require('./src/http-server');
+const { SafetyConfig } = require('./src/config');
+const { SafetyLayer } = require('./src/safety');
+const { createPortService } = require('./src/port-service');
 
 const PORT = Number.parseInt(process.env.PORT || '9999', 10);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -8,8 +11,12 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
   process.exit(1);
 }
 
-const app = createApp();
+const config = new SafetyConfig();
+const safetyLayer = new SafetyLayer({ config });
+const service = createPortService({ safetyLayer });
+const app = createApp({ service });
 
 app.listen(PORT, HOST, () => {
   console.log(`Port Manager running at http://${HOST}:${PORT}`);
+  console.log(`Safety mode: ${config.mode}`);
 });
