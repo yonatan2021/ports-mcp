@@ -3,9 +3,22 @@
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');
-const { createPortService, PortManagerError } = require('./port-service');
-const { SafetyConfig } = require('./config');
-const { SafetyLayer } = require('./safety');
+const { createPortService, PortManagerError, MAX_PORTS_RETURNED } = require('./port-service');
+const { createAgentTools } = require('./mcp-tools');
+
+const TOOL_TIMEOUT_MS = 15_000;
+
+function withTimeout(fn, label) {
+  return async (...args) => {
+    const result = await Promise.race([
+      fn(...args),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Tool "${label}" timed out after ${TOOL_TIMEOUT_MS}ms`)), TOOL_TIMEOUT_MS)
+      ),
+    ]);
+    return result;
+  };
+}
 
 function jsonText(payload) {
   return {
@@ -29,83 +42,71 @@ function errorResult(error) {
   };
 }
 
-function createMcpServer({ service, config, safetyLayer } = {}) {
-  // === Bootstrap safety config + safety layer if not injected ===
-  if (!config) {
-    config = new SafetyConfig();
-  }
-  if (!safetyLayer) {
-    safetyLayer = new SafetyLayer({ config });
-  }
-  if (!service) {
-    service = createPortService({ safetyLayer });
-  }
+const SAFETY_WARNING_LIST_PORTS = 'Returns active listening TCP ports with process and user information. IMPORTANT: Command-line arguments may contain tokens, file paths, or credentials. Handle output as sensitive data.';
+const SAFETY_WARNING_KILL = 'DESTRUCTIVE ACTION. Terminates a process by sending SIGTERM (and optionally SIGKILL). Requires explicit confirm=true. Validates pid/port match before acting. Refuses to terminate: self (Port Manager), system ports (<1024), and blocklisted system processes. Rate-limited to 5 kills/minute with 3s cooldown.';
 
+function createMcpServer({ service = createPortService(), safetyLayer = null } = {}) {
   const server = new McpServer({ name: 'ports-mcp', version: '1.0.0' });
 
-  // ======================================================================
-  // TOOL: list_ports
-  // ======================================================================
+  // Agent-optimized tools with structured JSON and safety guards
+  const childProcess = require('node:child_process');
+  function defaultExecFile(file, args, options = {}) {
+    return new Promise((resolve, reject) => {
+      childProcess.execFile(file, args, { timeout: 10_000, maxBuffer: 2 * 1024 * 1024, ...options }, (error, stdout, stderr) => {
+        const exitCode = error && typeof error.code === 'number' ? error.code : 0;
+        if (error && !options.allowNonZero) {
+          error.stdout = stdout;
+          error.stderr = stderr;
+          reject(error);
+          return;
+        }
+        resolve({ stdout, stderr, exitCode });
+      });
+    });
+  }
+  const agentTools = createAgentTools({ service, safetyLayer, runner: { execFile: defaultExecFile } });
+
   server.registerTool(
     'list_ports',
     {
       title: 'List listening TCP ports',
-      description: 'Returns active listening TCP ports with pid, processName, user, protocol/type, address, and commandLine. Safe — always allowed regardless of permission mode.',
+      description: SAFETY_WARNING_LIST_PORTS + ' Response capped at ' + MAX_PORTS_RETURNED + ' ports.',
       inputSchema: {},
     },
-    async () => {
+    withTimeout(async () => {
       try {
-        return jsonText({ ports: await service.listPorts() });
+        const ports = await service.listPorts();
+        const capped = ports.slice(0, MAX_PORTS_RETURNED);
+        return jsonText({ ports: capped, _meta: { count: capped.length, maxReturned: MAX_PORTS_RETURNED } });
       } catch (error) {
         return errorResult(error);
       }
-    }
+    }, 'list_ports')
   );
 
-  // ======================================================================
-  // TOOL: find_process_by_port
-  // ======================================================================
   server.registerTool(
     'find_process_by_port',
     {
       title: 'Find process by port',
-      description: 'Returns details for the listening process on a specific TCP port. Safe — always allowed.',
+      description: 'Returns details for the listening process on a specific TCP port.',
       inputSchema: {
         port: z.number().int().min(1).max(65535),
       },
     },
-    async ({ port }) => {
+    withTimeout(async ({ port }) => {
       try {
         return jsonText({ port: await service.findProcessByPort({ port }) });
       } catch (error) {
         return errorResult(error);
       }
-    }
+    }, 'find_process_by_port')
   );
 
-  // ======================================================================
-  // TOOL: kill_process_on_port
-  // ======================================================================
   server.registerTool(
     'kill_process_on_port',
     {
       title: 'Kill process on port',
-      description: [
-        'Guarded destructive action. Subject to the server\'s safety permission layer:',
-        '- If mode=read-only (default): blocked entirely.',
-        '- If mode=allowlist: only ports in the allowlist can be killed.',
-        '- If mode=blocklist: ports in the blocklist are protected.',
-        '',
-        'Additional protections:',
-        '- Owner verification: can only kill processes owned by the same user.',
-        '- System process protection: critical OS processes are always blocked.',
-        '- System ports (<1024): blocked unless added to allowlist.',
-        '- Rate limiting: max 5 kills/minute with 3s cooldown (configurable).',
-        '- Refuses to kill the MCP server itself.',
-        '',
-        'Dry-run by default (confirm=false). Set confirm=true to execute.',
-        'Set force=true to escalate from SIGTERM to SIGKILL if still alive.',
-      ].join('\n'),
+      description: SAFETY_WARNING_KILL + ' Params: port, pid, confirm (default false), allowSystemPort (default false), force (default false).',
       inputSchema: {
         port: z.number().int().min(1).max(65535),
         pid: z.number().int().min(1),
@@ -119,23 +120,20 @@ function createMcpServer({ service, config, safetyLayer } = {}) {
         openWorldHint: false,
       },
     },
-    async (args) => {
+    withTimeout(async (args) => {
       try {
         return jsonText(await service.killProcessOnPort(args));
       } catch (error) {
         return errorResult(error);
       }
-    }
+    }, 'kill_process_on_port')
   );
 
-  // ======================================================================
-  // TOOL: restart_process_on_port (intentionally disabled)
-  // ======================================================================
   server.registerTool(
     'restart_process_on_port',
     {
       title: 'Restart process on port (disabled)',
-      description: 'Intentionally disabled. Arbitrary shell command restart is unsafe without an explicit command allowlist.',
+      description: 'Intentionally disabled. Arbitrary shell command restart is unsafe without an explicit allowlist.',
       inputSchema: {
         port: z.number().int().min(1).max(65535),
         pid: z.number().int().min(1),
@@ -147,239 +145,187 @@ function createMcpServer({ service, config, safetyLayer } = {}) {
         openWorldHint: false,
       },
     },
-    async (args) => {
+    withTimeout(async (args) => {
       try {
         return jsonText(await service.restartProcessOnPort(args));
       } catch (error) {
         return errorResult(error);
       }
-    }
+    }, 'restart_process_on_port')
   );
 
   // ======================================================================
-  // SAFETY TOOLS — Configuration Management
+  // AGENT-OPTIMIZED TOOLS — structured JSON, safe by default
   // ======================================================================
 
-  // --------------------------------------------------------------------
-  // TOOL: get_safety_config
-  // --------------------------------------------------------------------
   server.registerTool(
-    'get_safety_config',
+    'verify_process_owner',
     {
-      title: 'Get safety configuration',
+      title: 'Verify process ownership',
       description: [
-        'Returns the current safety layer configuration including:',
-        '- mode (read-only | allowlist | blocklist)',
-        '- allowlist and blocklist contents',
-        '- rate limiter and cooldown settings',
-        '- verification status',
+        'Returns the owner (username) of a process listening on a given port + PID.',
+        '',
+        'WARNING: Read-only informational tool. No destructive action is performed.',
+        '',
+        'Uses both lsof and ps to verify the owner. Double-check confirms owner',
+        'even when one data source is unreliable.',
+      ].join('\n'),
+      inputSchema: {
+        port: z.number().int().min(1).max(65535).describe('WARNING: Must match a currently listening port.'),
+        pid: z.number().int().min(1).describe('WARNING: Must match the actual PID holding the given port.'),
+      },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    withTimeout(async ({ port, pid }) => {
+      const result = await agentTools.verifyProcessOwner({ port, pid });
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'verify_process_owner')
+  );
+
+  server.registerTool(
+    'get_process_details',
+    {
+      title: 'Get detailed process information',
+      description: [
+        'Full process information for a given port and optional PID:',
+        '- pid, port, processName, user, commandLine, uptime, ppid, protocol, address',
+        '',
+        'WARNING: Read-only informational tool. No destructive action is performed.',
+        '',
+        'Enriches standard lsof output with ps data (uptime, ppid, full command line).',
+        'Use this before safe_kill_process to confirm you have the right target.',
+      ].join('\n'),
+      inputSchema: {
+        port: z.number().int().min(1).max(65535),
+        pid: z.number().int().min(1).optional().describe('Optional: disambiguates when multiple processes listen on the same port.'),
+      },
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    withTimeout(async ({ port, pid }) => {
+      const result = await agentTools.getProcessDetails({ port, pid });
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'get_process_details')
+  );
+
+  server.registerTool(
+    'safe_kill_process',
+    {
+      title: 'Safely kill a process (guarded)',
+      description: [
+        'WARNING: Destructive action. Terminates a process by sending SIGTERM.',
+        '',
+        'Safety guards (ALL must pass before execution):',
+        '  1. Permission mode — read-only blocks all kills',
+        '  2. Allowlist/Blocklist — port must be allowed (or not blocked) per current mode',
+        '  3. System port protection — ports < 1024 blocked unless in allowlist',
+        '  4. Process name blocklist — system processes (launchd, kernel_task, etc.) always blocked',
+        '  5. Owner verification — can only kill processes owned by the same user running the MCP',
+        '  6. Rate limiting — max N kills per minute with cooldown between operations',
+        '',
+        'Dry-run by default (confirm=false). Use confirm=true to execute.',
+        'Use force=true to escalate to SIGKILL if the process survives SIGTERM.',
+      ].join('\n'),
+      inputSchema: {
+        port: z.number().int().min(1).max(65535).describe('WARNING: Must match a currently listening port. Safety checks include system port protection and mode/allowlist.'),
+        pid: z.number().int().min(1).describe('WARNING: Must match the actual PID holding the port. Verified against both lsof and the port+pid match check.'),
+        confirm: z.boolean().optional().default(false).describe('Set true to actually send SIGTERM. Without it, this is a dry run with no side effects.'),
+        force: z.boolean().optional().default(false).describe('Set true to follow up with SIGKILL if the process does not terminate after SIGTERM.'),
+      },
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    withTimeout(async ({ port, pid, confirm, force }) => {
+      const result = await agentTools.safeKillProcess({ port, pid, confirm, force });
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'safe_kill_process')
+  );
+
+  server.registerTool(
+    'safe_restart_process',
+    {
+      title: 'Restart process (disabled)',
+      description: [
+        'WARNING: Intentionally disabled. Restarting a process requires executing an arbitrary',
+        'shell command, which is unsafe without an explicit command allowlist.',
+        '',
+        'This tool will always return an error until a command allowlist feature is implemented.',
+      ].join('\n'),
+      inputSchema: {
+        port: z.number().int().min(1).max(65535),
+        pid: z.number().int().min(1),
+        commandLine: z.string().optional().describe('Command to restart with (ignored — feature not implemented).'),
+      },
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    withTimeout(async ({ port, pid, commandLine }) => {
+      const result = await agentTools.safeRestartProcess({ port, pid, commandLine });
+      return { isError: true, ...jsonText(result) };
+    }, 'safe_restart_process')
+  );
+
+  server.registerTool(
+    'get_safety_status',
+    {
+      title: 'Get safety status',
+      description: [
+        'Returns the current safety configuration and rate-limiter state:',
+        '- mode (read-only / allowlist / blocklist)',
+        '- verifyOwner setting',
+        '- current user, self PID, self port',
+        '- allowlist contents, blocklist count, process blocklist count',
+        '- rate limit: max per minute and active operations in current window',
+        '- cooldown: configured interval and time since last operation',
+        '',
+        'WARNING: Read-only informational tool. No destructive action is performed.',
+        '',
+        'Use this before safe_kill_process to understand what is protected and whether',
+        'you need to adjust the mode, allowlist, or rate limits first.',
       ].join('\n'),
       inputSchema: {},
-    },
-    async () => {
-      try {
-        return jsonText(await safetyLayer.getStatus());
-      } catch (error) {
-        return errorResult(error);
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: set_mode
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'set_mode',
-    {
-      title: 'Set permission mode',
-      description: 'Change the safety permission mode. "read-only" = no destructive ops. "allowlist" = only ports in the allowlist. "blocklist" = ports in the blocklist are protected.',
-      inputSchema: {
-        mode: z.enum(['read-only', 'allowlist', 'blocklist']),
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
       },
     },
-    async ({ mode }) => {
-      try {
-        config.setMode(mode);
-        return jsonText({ ok: true, mode: config.mode });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
+    withTimeout(async () => {
+      const result = await agentTools.getSafetyStatus();
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
       }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: set_allowlist
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'set_allowlist',
-    {
-      title: 'Set allowlist',
-      description: 'Replace the entire allowlist with a new set of port numbers. In allowlist mode, only these ports can be killed.',
-      inputSchema: {
-        ports: z.array(z.number().int().min(1).max(65535)),
-      },
-    },
-    async ({ ports }) => {
-      try {
-        config.setAllowlist(ports);
-        return jsonText({ ok: true, allowlist: [...config.allowlist].sort((a, b) => a - b) });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: add_to_allowlist
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'add_to_allowlist',
-    {
-      title: 'Add port to allowlist',
-      description: 'Add a single port to the allowlist. In allowlist mode, this permits destructive operations on this port.',
-      inputSchema: {
-        port: z.number().int().min(1).max(65535),
-      },
-    },
-    async ({ port }) => {
-      try {
-        config.addToAllowlist(port);
-        return jsonText({ ok: true, port, allowlist: [...config.allowlist].sort((a, b) => a - b) });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: remove_from_allowlist
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'remove_from_allowlist',
-    {
-      title: 'Remove port from allowlist',
-      description: 'Remove a single port from the allowlist. If in allowlist mode, this port can no longer be killed.',
-      inputSchema: {
-        port: z.number().int().min(1).max(65535),
-      },
-    },
-    async ({ port }) => {
-      try {
-        config.removeFromAllowlist(port);
-        return jsonText({ ok: true, port, allowlist: [...config.allowlist].sort((a, b) => a - b) });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: set_blocklist
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'set_blocklist',
-    {
-      title: 'Set blocklist',
-      description: 'Replace the entire blocklist with a new set of port numbers. In blocklist mode, these ports are protected from destructive operations.',
-      inputSchema: {
-        ports: z.array(z.number().int().min(1).max(65535)),
-      },
-    },
-    async ({ ports }) => {
-      try {
-        config.setBlocklist(ports);
-        return jsonText({ ok: true, blocklist: [...config.blocklist].sort((a, b) => a - b) });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: add_to_blocklist
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'add_to_blocklist',
-    {
-      title: 'Add port to blocklist',
-      description: 'Add a single port to the blocklist. In blocklist mode, this protects the port from destructive operations.',
-      inputSchema: {
-        port: z.number().int().min(1).max(65535),
-      },
-    },
-    async ({ port }) => {
-      try {
-        config.addToBlocklist(port);
-        return jsonText({ ok: true, port, blocklist: [...config.blocklist].sort((a, b) => a - b) });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: remove_from_blocklist
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'remove_from_blocklist',
-    {
-      title: 'Remove port from blocklist',
-      description: 'Remove a single port from the blocklist. If in blocklist mode, this port can now be killed (subject to other safety checks).',
-      inputSchema: {
-        port: z.number().int().min(1).max(65535),
-      },
-    },
-    async ({ port }) => {
-      try {
-        config.removeFromBlocklist(port);
-        return jsonText({ ok: true, port, blocklist: [...config.blocklist].sort((a, b) => a - b) });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
-  );
-
-  // --------------------------------------------------------------------
-  // TOOL: update_rate_limits
-  // --------------------------------------------------------------------
-  server.registerTool(
-    'update_rate_limits',
-    {
-      title: 'Update rate limit settings',
-      description: 'Change rate limiting and cooldown parameters. Reset rate limiter counters.',
-      inputSchema: {
-        maxOpsPerMinute: z.number().int().min(1).max(100).optional(),
-        cooldownMs: z.number().int().min(0).max(60_000).optional(),
-      },
-    },
-    async ({ maxOpsPerMinute, cooldownMs } = {}) => {
-      try {
-        if (maxOpsPerMinute !== undefined) {
-          config.setMaxOpsPerMinute(maxOpsPerMinute);
-        }
-        if (cooldownMs !== undefined) {
-          config.setCooldownMs(cooldownMs);
-        }
-        safetyLayer.refreshRateLimiters();
-        return jsonText({
-          ok: true,
-          maxOpsPerMinute: config.maxOpsPerMinute,
-          cooldownMs: config.cooldownMs,
-        });
-      } catch (error) {
-        return jsonText({ ok: false, error: error.message });
-      }
-    }
+      return jsonText(result);
+    }, 'get_safety_status')
   );
 
   return server;
 }
 
 async function main() {
-  const config = new SafetyConfig();
-  const safetyLayer = new SafetyLayer({ config });
-  const service = createPortService({ safetyLayer });
-  const server = createMcpServer({ service, config, safetyLayer });
+  const server = createMcpServer();
   await server.connect(new StdioServerTransport());
 }
 
@@ -392,6 +338,4 @@ if (require.main === module) {
 
 module.exports = {
   createMcpServer,
-  SafetyConfig,
-  SafetyLayer,
 };
