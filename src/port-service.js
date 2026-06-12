@@ -83,6 +83,7 @@ function createPortService(options = {}) {
   const selfPort = options.selfPort ?? validateInteger('selfPort', process.env.PORT || 9999, { min: 1, max: 65535 });
   const killFn = options.killFn || ((pid, signal) => process.kill(pid, signal));
   const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const safetyLayer = options.safetyLayer || null;
 
   async function listPorts() {
     if (options.listPorts) {
@@ -140,6 +141,20 @@ function createPortService(options = {}) {
     const normalizedPort = validateInteger('port', port, { min: 1, max: 65535 });
     const normalizedPid = validateInteger('pid', pid, { min: 1 });
     const portInfo = await findProcessByPort({ port: normalizedPort });
+
+    // === Safety Layer Check (outer gate) ===
+    if (safetyLayer) {
+      const check = await safetyLayer.checkDestructive(
+        { ...portInfo, port: normalizedPort, pid: normalizedPid },
+        { allowSystemPort: allowSystemPort === true }
+      );
+      if (!check.ok) {
+        throw new PortManagerError('SAFETY_' + check.check.toUpperCase(), check.reason, {
+          status: 403,
+          details: { ...check.details, safetyCheck: check.check },
+        });
+      }
+    }
 
     if (portInfo.pid !== normalizedPid) {
       throw new PortManagerError('PORT_PID_MISMATCH', `Port ${normalizedPort} is held by PID ${portInfo.pid}, not PID ${normalizedPid}`, {
