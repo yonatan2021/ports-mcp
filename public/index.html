@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>macOS Port Manager</title>
+  <title>מנהל פורטים — macOS Port Manager</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔌%3C/text%3E%3C/svg%3E">
 </head>
@@ -24,10 +24,18 @@
         </div>
       </div>
       <div class="header-actions">
+        <span id="header-safety-badge" class="safety-header-badge" title="Safety mode: read-only">👁️</span>
         <div class="status-indicator">
           <span class="status-pulse"></span>
           <span class="status-text">Server Active</span>
         </div>
+        <button id="settings-btn" class="btn btn-secondary btn-settings" aria-label="Open safety settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-settings">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Settings
+        </button>
         <button id="refresh-btn" class="btn btn-primary btn-refresh">
           <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
@@ -122,6 +130,112 @@
       </div>
     </main>
   </div>
+
+  <!-- Settings Panel Overlay -->
+  <div id="settings-overlay" class="settings-overlay hidden"></div>
+
+  <!-- Settings Panel (side drawer) -->
+  <aside id="settings-panel" class="settings-panel glass" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="settings-header">
+      <h2 id="settings-title">⚙️ Safety Settings</h2>
+      <button id="settings-close-btn" class="btn-close-modal" aria-label="Close settings">&times;</button>
+    </div>
+
+    <div class="settings-body">
+      <!-- Mode Selector -->
+      <section class="settings-section">
+        <h3>Permission Mode</h3>
+        <p class="section-desc">Controls which ports can have destructive operations performed.</p>
+        <div class="mode-selector">
+          <label class="mode-option mode-readonly">
+            <input type="radio" name="safety-mode" value="read-only" id="mode-readonly">
+            <span class="mode-icon">👁️</span>
+            <div class="mode-text">
+              <strong>Read-Only</strong>
+              <small>View only — all kill/restart disabled</small>
+            </div>
+          </label>
+          <label class="mode-option mode-allowlist">
+            <input type="radio" name="safety-mode" value="allowlist" id="mode-allowlist">
+            <span class="mode-icon">✅</span>
+            <div class="mode-text">
+              <strong>Allowlist</strong>
+              <small>Only explicitly added ports can be terminated</small>
+            </div>
+          </label>
+          <label class="mode-option mode-blocklist">
+            <input type="radio" name="safety-mode" value="blocklist" id="mode-blocklist">
+            <span class="mode-icon">🚫</span>
+            <div class="mode-text">
+              <strong>Blocklist</strong>
+              <small>All ports allowed except those blocked</small>
+            </div>
+          </label>
+        </div>
+        <div class="mode-status">
+          <span id="mode-status-badge" class="badge badge-mode badge-readonly">👁️ Read-Only</span>
+          <span id="mode-label" class="mode-label-text">Mode: Read-Only</span>
+        </div>
+      </section>
+
+      <!-- Allowlist Manager -->
+      <section id="allowlist-section" class="settings-section hidden">
+        <h3>Allowlist <span class="count-badge" id="allowlist-count">0</span></h3>
+        <p class="section-desc warn-info">Ports in this list are <strong>allowed</strong> for termination. Only works in Allowlist mode.</p>
+        <div class="list-input-row">
+          <input type="number" id="allowlist-input" class="list-input" placeholder="Enter port (1–65535)" min="1" max="65535" autocomplete="off">
+          <button id="allowlist-add-btn" class="btn btn-primary btn-list-add">Add Port</button>
+        </div>
+        <ul id="allowlist-list" class="port-list">
+          <li class="list-empty">No ports in allowlist</li>
+        </ul>
+      </section>
+
+      <!-- Blocklist Manager -->
+      <section id="blocklist-section" class="settings-section hidden">
+        <h3>Blocklist <span class="count-badge" id="blocklist-count">0</span></h3>
+        <p class="section-desc warn-danger">Ports in this list are <strong>blocked</strong> from termination. System ports (≤1024) are pre-blocked by default.</p>
+        <div class="list-input-row">
+          <input type="number" id="blocklist-input" class="list-input" placeholder="Enter port (1–65535)" min="1" max="65535" autocomplete="off">
+          <button id="blocklist-add-btn" class="btn btn-danger btn-list-add">Block Port</button>
+        </div>
+        <ul id="blocklist-list" class="port-list">
+          <li class="list-empty">No ports in blocklist</li>
+        </ul>
+      </section>
+
+      <!-- Current Status Summary -->
+      <section class="settings-section">
+        <h3>Safety Status</h3>
+        <div class="status-grid">
+          <div class="status-row">
+            <span class="status-label">Mode</span>
+            <span class="status-val" id="settings-status-mode">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Allowlist</span>
+            <span class="status-val" id="settings-status-allowlist">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Blocklist</span>
+            <span class="status-val" id="settings-status-blocklist">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Current User</span>
+            <span class="status-val" id="settings-status-user">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Rate Limit</span>
+            <span class="status-val" id="settings-status-rate-limit">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Cooldown</span>
+            <span class="status-val" id="settings-status-cooldown">—</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </aside>
 
   <!-- Confirmation Modal -->
   <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc modal-warning confirm-help">
@@ -226,5 +340,6 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="settings.js"></script>
 </body>
 </html>
