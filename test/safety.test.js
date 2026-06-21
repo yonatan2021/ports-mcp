@@ -542,3 +542,15 @@ test('SafetyLayer blocks when ps shows different owner than current user', async
   assert.equal(result.ok, false);
   assert.equal(result.check, 'owner_verified');
 });
+
+test('SafetyLayer blocks destructive ops on processes flagged as isSystem', async () => {
+  const config = new SafetyConfig({ mode: 'blocklist' });
+  const layer = new SafetyLayer({ config, currentUser: 'yonig' });
+  const target = { port: 7000, pid: 12345, processName: 'ControlCenter', user: 'yonig', isSystem: true };
+
+  const result = await layer.checkDestructive(target);
+  assert.equal(result.ok, false);
+  assert.equal(result.check, 'system_process');
+  assert.ok(result.reason.includes('system process'));
+});
+

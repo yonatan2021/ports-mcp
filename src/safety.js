@@ -190,10 +190,21 @@ class SafetyLayer {
       }
     }
 
+    // === 3b. Dynamic System Process protection ===
+    if (target.isSystem === true) {
+      return {
+        ok: false,
+        check: 'system_process',
+        reason: `Process "${target.processName}" is identified as a macOS system process and cannot be terminated.`,
+        details: { processName: target.processName, pid: target.pid }
+      };
+    }
+
     // === 4. Process name blocklist ===
     const blockedProcess = this.config.processBlocklist.find(
       (name) => target.processName && target.processName.toLowerCase().includes(name.toLowerCase())
     );
+
 
     if (blockedProcess) {
       return {
