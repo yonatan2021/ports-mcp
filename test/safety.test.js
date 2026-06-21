@@ -9,9 +9,9 @@ const { createPortService, PortManagerError } = require('../src/port-service');
 // SafetyConfig
 // ======================================================================
 
-test('SafetyConfig defaults to read-only mode with system port blocklist', () => {
+test('SafetyConfig defaults to blocklist mode with system port blocklist', () => {
   const config = new SafetyConfig();
-  assert.equal(config.mode, 'read-only');
+  assert.equal(config.mode, 'blocklist');
   assert.ok(config.blocklist.has(80));   // HTTP
   assert.ok(config.blocklist.has(443));  // HTTPS
   assert.ok(config.blocklist.has(22));   // SSH
@@ -61,12 +61,12 @@ test('SafetyConfig loads mode from env var', () => {
   }
 });
 
-test('SafetyConfig falls back to read-only on invalid mode', () => {
+test('SafetyConfig falls back to blocklist on invalid mode', () => {
   const original = process.env.PORTS_MCP_MODE;
   try {
     process.env.PORTS_MCP_MODE = 'invalid';
     const config = new SafetyConfig();
-    assert.equal(config.mode, 'read-only');
+    assert.equal(config.mode, 'blocklist');
   } finally {
     process.env.PORTS_MCP_MODE = original;
   }
@@ -88,7 +88,7 @@ test('SafetyConfig options override env vars', () => {
 
 test('SafetyConfig allows runtime mode switching', () => {
   const config = new SafetyConfig();
-  assert.equal(config.mode, 'read-only');
+  assert.equal(config.mode, 'blocklist');
   config.setMode('allowlist');
   assert.equal(config.mode, 'allowlist');
   config.setMode('blocklist');
@@ -133,7 +133,7 @@ test('SafetyConfig toJSON returns sorted arrays', () => {
   assert.deepEqual(json.allowlist, [3000, 8080, 9090]);
   assert.equal(typeof json.processBlocklistCount, 'number');
   assert.ok(json.processBlocklistCount > 0);
-  assert.equal(json.mode, 'read-only');
+  assert.equal(json.mode, 'blocklist');
 });
 
 // ======================================================================
