@@ -32,10 +32,10 @@ test('kill confirmation requires explicit PID entry before enabling destructive 
 });
 
 test('self and system ports render with disabled destructive controls and explanations', () => {
-  assert.match(appJs, /const isSystemPort = Number\.isFinite\(portNumber\) && portNumber <= 1024/);
-  assert.match(appJs, /const killDisabled = isSelf \|\| isSystemPort/);
+  assert.match(appJs, /const isSystemProcess = portObj\.isSystem === true/);
+  assert.match(appJs, /const killDisabled = isSelf \|\| isSystemProcess/);
   assert.match(appJs, /Self-protection: this is the Port Manager UI server/);
-  assert.match(appJs, /System-port protection: ports 1024 and below/);
+  assert.match(appJs, /System-process protection/);
   assert.match(appJs, /Restart disabled: arbitrary command restart is not available/);
   assert.match(appJs, /const portText = escapeHtml\(String\(portObj\.port \?\? ''\)\)/);
   assert.match(appJs, /const pidText = escapeHtml\(String\(portObj\.pid \?\? ''\)\)/);
@@ -115,7 +115,7 @@ test('app.js checks read-only mode and disables kill buttons accordingly', () =>
   assert.match(appJs, /isReadOnlyMode/);
   assert.match(appJs, /window\.SafetySettings/);
   assert.match(appJs, /canKill/);
-  assert.match(appJs, /killDisabled = isSelf \|\| isSystemPort \|\| isReadOnlyMode/);
+  assert.match(appJs, /killDisabled = isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
   assert.match(appJs, /Server is in read-only mode/);
 });
 

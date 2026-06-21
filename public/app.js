@@ -11,6 +11,57 @@ const POLL_INTERVAL = 8000; // 8 seconds
 // Self Port detection based on the loaded URL
 const selfPort = parseInt(window.location.port, 10) || 9999;
 
+// Dictionary of common ports with descriptions in Hebrew
+const PORT_DESCRIPTIONS = {
+  22: 'גישה מרחוק מאובטחת (SSH)',
+  53: 'שירות שמות מתחם (DNS)',
+  80: 'שרת אינטרנט לא מאובטח (HTTP)',
+  123: 'סנכרון זמן מערכת (NTP)',
+  443: 'שרת אינטרנט מאובטח (HTTPS)',
+  3000: 'שרת פיתוח מקומי (React/Node.js)',
+  3306: 'בסיס נתונים MySQL',
+  5000: 'שירות AirPlay / שרת פיתוח Flask',
+  5173: 'שרת פיתוח מקומי (Vite)',
+  5432: 'בסיס נתונים PostgreSQL',
+  6379: 'מסד נתונים בזיכרון Redis',
+  7000: 'שירות מערכת macOS Control Center / AirPlay',
+  8000: 'שרת פיתוח מקומי (Python/Django)',
+  8080: 'שרת פיתוח מקומי חלופי',
+  9000: 'שרת פיתוח מקומי / PHP-FPM',
+  9200: 'בסיס נתונים Elasticsearch',
+  27017: 'בסיס נתונים MongoDB'
+};
+
+// Returns a user-friendly description of the port's purpose
+function getPortPurpose(port, processName, isSystem) {
+  if (PORT_DESCRIPTIONS[port]) {
+    return PORT_DESCRIPTIONS[port];
+  }
+  const name = (processName || '').toLowerCase();
+  if (name.includes('node') || name.includes('npm')) {
+    return 'אפליקציית פיתוח Node.js';
+  }
+  if (name.includes('python') || name.includes('python3')) {
+    return 'אפליקציית פיתוח Python';
+  }
+  if (name.includes('postgres') || name.includes('postgresql')) {
+    return 'בסיס נתונים PostgreSQL';
+  }
+  if (name.includes('redis-server')) {
+    return 'שרת זיכרון Redis';
+  }
+  if (name.includes('mongod')) {
+    return 'בסיס נתונים MongoDB';
+  }
+  if (name.includes('docker') || name.includes('dockerd')) {
+    return 'מכולת פיתוח Docker';
+  }
+  if (isSystem) {
+    return 'שירות מערכת macOS חיוני';
+  }
+  return 'שירות כללי / פורט לא מוכר';
+}
+
 // DOM Elements
 const elements = {
   tableBody: document.getElementById('ports-table-body'),
@@ -127,6 +178,28 @@ function setupEventListeners() {
   elements.detailsModal.addEventListener('click', (e) => {
     if (e.target === elements.detailsModal) closeDetailsModal();
   });
+
+  // Educational Widget Toggle
+  const eduToggle = document.getElementById('education-toggle');
+  const eduContent = document.getElementById('education-content');
+  if (eduToggle && eduContent) {
+    eduToggle.addEventListener('click', () => {
+      const isHidden = eduContent.classList.contains('hidden');
+      eduContent.classList.toggle('hidden', !isHidden);
+      eduToggle.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+      const arrow = eduToggle.querySelector('.education-arrow');
+      if (arrow) {
+        arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    });
+    // Keyboard support for accessibility
+    eduToggle.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        eduToggle.click();
+      }
+    });
+  }
 }
 
 // --- POLLING LOGIC ---
@@ -142,14 +215,45 @@ function stopPolling() {
   }
 }
 
+// --- DATA DEDUPLICATION LOGIC ---
+// Merges IPv4 & IPv6 duplicate rows for the same port and PID
+function deduplicatePorts(ports) {
+  const grouped = {};
+  for (const item of ports) {
+    const key = `${item.port}-${item.pid}`;
+    if (!grouped[key]) {
+      grouped[key] = {
+        ...item,
+        types: [item.type],
+        protocols: [item.protocol]
+      };
+    } else {
+      if (!grouped[key].types.includes(item.type)) {
+        grouped[key].types.push(item.type);
+      }
+      if (!grouped[key].protocols.includes(item.protocol)) {
+        grouped[key].protocols.push(item.protocol);
+      }
+    }
+  }
+  return Object.values(grouped).map(item => {
+    const typeStr = item.types.join(', ');
+    const protoStr = item.protocols.join(', ');
+    return {
+      ...item,
+      typeDisplay: `${protoStr} (${typeStr})`
+    };
+  });
+}
+
 // --- DATA FETCHING ---
 async function fetchPorts() {
-  // Show loading spinner
+  // Show loading spinner in Hebrew
   elements.tableBody.innerHTML = `
     <tr>
-      <td colspan="7" class="loading-state">
+      <td colspan="8" class="loading-state">
         <div class="spinner"></div>
-        Scanning macOS ports...
+        סורק פורטים פעילים ב-macOS...
       </td>
     </tr>
   `;
@@ -157,7 +261,7 @@ async function fetchPorts() {
   
   try {
     const response = await fetch('/api/ports');
-    if (!response.ok) throw new Error('Port Manager API returned an error');
+    if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
     const data = await response.json();
     portsData = data.ports || [];
     applyFilters();
@@ -165,12 +269,12 @@ async function fetchPorts() {
     console.error(err);
     elements.tableBody.innerHTML = `
       <tr>
-        <td colspan="7" class="loading-state" style="color: var(--color-danger)">
-          ⚠️ Cannot reach Port Manager. Ensure the server is running at <code>http://127.0.0.1:${selfPort}</code> and restart it if needed.
+        <td colspan="8" class="loading-state" style="color: var(--color-danger)">
+          ⚠️ לא מצליח ליצור קשר עם שרת מנהל הפורטים. ודא שהשרת רץ בכתובת <code>http://127.0.0.1:${selfPort}</code> ורענן את הדף.
         </td>
       </tr>
     `;
-    showToast('Connection lost. Is the server still running?', 'error');
+    showToast('החיבור לשרת אבד. האם שרת מנהל הפורטים עדיין פעיל?', 'error');
   }
 }
 
@@ -196,8 +300,8 @@ async function fetchPortsSilent() {
 function applyFilters() {
   filteredPorts = portsData.filter(portObj => {
     // 1. Tab filter
-    if (activeFilter === 'system' && portObj.port > 1024) return false;
-    if (activeFilter === 'user' && portObj.port <= 1024) return false;
+    if (activeFilter === 'system' && !portObj.isSystem) return false;
+    if (activeFilter === 'user' && portObj.isSystem) return false;
 
     // 2. Search query filter
     if (searchQuery) {
@@ -206,26 +310,33 @@ function applyFilters() {
       const name = (portObj.processName || '').toLowerCase();
       const cmd = (portObj.commandLine || '').toLowerCase();
       const user = (portObj.user || '').toLowerCase();
+      const purpose = getPortPurpose(portObj.port, portObj.processName, portObj.isSystem).toLowerCase();
       
       const match = portStr.includes(searchQuery) ||
                     pidStr.includes(searchQuery) ||
                     name.includes(searchQuery) ||
                     cmd.includes(searchQuery) ||
-                    user.includes(searchQuery);
+                    user.includes(searchQuery) ||
+                    purpose.includes(searchQuery);
       if (!match) return false;
     }
 
     return true;
   });
 
+  // Group IPv4/IPv6 duplicates before displaying
+  filteredPorts = deduplicatePorts(filteredPorts);
+
   updateMetrics();
   sortAndRender();
 }
 
 function updateMetrics() {
-  const activeCount = portsData.length;
-  const userCount = portsData.filter(p => p.port > 1024).length;
-  const systemCount = portsData.filter(p => p.port <= 1024).length;
+  // Deduplicate entire ports list for accurate unique counts
+  const uniquePorts = deduplicatePorts(portsData);
+  const activeCount = uniquePorts.length;
+  const userCount = uniquePorts.filter(p => !p.isSystem).length;
+  const systemCount = uniquePorts.filter(p => p.isSystem).length;
 
   elements.metricActiveCount.textContent = activeCount;
   elements.metricUserCount.textContent = userCount;
@@ -268,16 +379,22 @@ function renderTable() {
     const portText = escapeHtml(String(portObj.port ?? ''));
     const pidText = escapeHtml(String(portObj.pid ?? ''));
     const isSelf = portNumber === selfPort;
-    const isSystemPort = Number.isFinite(portNumber) && portNumber <= 1024;
+    const isSystemProcess = portObj.isSystem === true;
     const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
-    const killDisabled = isSelf || isSystemPort || isReadOnlyMode;
+    const killDisabled = isSelf || isSystemProcess || isReadOnlyMode;
+    
+    // Safety disable reasons in Hebrew
+    // Self-protection: this is the Port Manager UI server
+    // System-process protection
+    // Server is in read-only mode
+    // Restart disabled: arbitrary command restart is not available
     const killDisabledReason = isSelf
-      ? 'Self-protection: this is the Port Manager UI server and cannot terminate itself.'
-      : isSystemPort
-        ? 'System-port protection: ports 1024 and below require backend-level explicit allowSystem; the UI keeps them disabled.'
+      ? 'הגנה עצמית: זהו שרת מנהל הפורטים הנוכחי ולא ניתן לסגור אותו.'
+      : isSystemProcess
+        ? 'הגנת תהליכי מערכת: תהליך זה מוגדר כחלק ממערכת ההפעלה של macOS ולא ניתן לסגור אותו מטעמי בטיחות.'
         : isReadOnlyMode
-          ? 'Server is in read-only mode. Switch to Allowlist or Blocklist mode in Settings to enable termination.'
-          : `Terminate PID ${portObj.pid} on port ${portObj.port} — requires typed confirmation.`;
+          ? 'שרת מנהל הפורטים נמצא במצב "קריאה בלבד". שנה את מצב הבטיחות בהגדרות כדי לאפשר סגירה.'
+          : `סגור תהליך PID ${portObj.pid} בפורט ${portObj.port} — דורש הקלדת אישור.`;
 
     // Port Badge Class
     let badgeClass = 'port-badge';
@@ -285,11 +402,10 @@ function renderTable() {
     if (isSelf) {
       badgeClass += ' self';
       safetyClass = ' self';
-    } else if (isSystemPort) {
+    } else if (isSystemProcess) {
       badgeClass += ' system';
       safetyClass = ' system';
     } else if (typeof window.SafetySettings !== 'undefined') {
-      // Check safety state for non-self, non-system ports
       const ss = window.SafetySettings.getState();
       if (ss) {
         if (ss.mode === 'allowlist') {
@@ -306,9 +422,9 @@ function renderTable() {
     // Command display truncation
     const cmdClean = (portObj.commandLine || '').replace(/\n/g, ' ');
     const processIcon = getProcessIcon(portObj.processName);
-    const protocol = escapeHtml(portObj.protocol || 'UNKNOWN');
+    const protocol = escapeHtml(portObj.typeDisplay || `${portObj.protocol} (${portObj.type})`);
     const protocolClass = safeClassName(portObj.protocol || 'unknown');
-    const type = escapeHtml(portObj.type || 'unknown');
+    const purposeText = getPortPurpose(portNumber, portObj.processName, portObj.isSystem);
 
     tr.innerHTML = `
       <td>
@@ -317,27 +433,30 @@ function renderTable() {
       <td>
         <div class="process-name-cell">
           <span class="process-icon">${processIcon}</span>
-          <span class="process-title">${escapeHtml(portObj.processName)}</span>
+          <span class="process-title" dir="ltr" style="text-align: right; display: inline-block;">${escapeHtml(portObj.processName)}</span>
         </div>
       </td>
-      <td class="font-mono">${pidText}</td>
+      <td class="font-mono" dir="ltr">${pidText}</td>
       <td>${escapeHtml(portObj.user)}</td>
       <td>
-        <span class="protocol-badge ${protocolClass}">${protocol} (${type})</span>
+        <span class="protocol-badge ${protocolClass}">${protocol}</span>
       </td>
-      <td class="command-cell" title="${escapeHtml(cmdClean)}">
+      <td>
+        <span class="purpose-text">${escapeHtml(purposeText)}</span>
+      </td>
+      <td class="command-cell" title="${escapeHtml(cmdClean)}" dir="ltr" style="text-align: left;">
         ${escapeHtml(cmdClean)}
       </td>
       <td class="text-right">
         <div class="action-group">
-          <button class="action-btn btn-details-action" title="View details and full command" aria-label="View details and full command for PID ${pidText} on port ${portText}">
+          <button class="action-btn btn-details-action" title="הצג פרטים מלאים ופקודת הפעלה" aria-label="הצג פרטים מלאים עבור תהליך ${pidText} בפורט ${portText}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="16" x2="12" y2="12"></line>
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
           </button>
-          <button class="action-btn btn-restart-action" disabled aria-disabled="true" title="Restart disabled: arbitrary command restart is not available until a backend allowlist exists">
+          <button class="action-btn btn-restart-action" disabled aria-disabled="true" title="פעולת אתחול כבויה מטעמי בטיחות במערכת">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
@@ -383,9 +502,9 @@ function openConfirmModal(action, portObj) {
   elements.confirmRequiredPid.textContent = String(portObj.pid);
 
   if (action === 'kill') {
-    elements.modalTitle.textContent = 'Confirm terminate process';
-    elements.modalDesc.textContent = `This will send SIGTERM to PID ${portObj.pid} on port ${portObj.port}. Use it only when you recognize the process and are ready to stop it.`;
-    elements.modalConfirmBtn.textContent = 'Terminate Process';
+    elements.modalTitle.textContent = 'אישור סגירת תוכנה ותהליך';
+    elements.modalDesc.innerHTML = `פעולה זו תשלח אות כיבוי (<code>SIGTERM</code>) למזהה תהליך (PID) <strong>${portObj.pid}</strong> בפורט <strong>${portObj.port}</strong>. סגור את התוכנה רק אם אתה בטוח שהיא אינה חיונית לפעילותך.`;
+    elements.modalConfirmBtn.textContent = 'סגור תוכנה (Terminate)';
     elements.modalConfirmBtn.className = 'btn btn-danger';
     elements.modalConfirmBtn.disabled = true;
     
@@ -393,7 +512,7 @@ function openConfirmModal(action, portObj) {
     elements.modalConfirmBtn.onclick = async () => {
       if (!validateDestructiveConfirmation(portObj)) return;
       elements.modalConfirmBtn.disabled = true;
-      elements.modalConfirmBtn.textContent = 'Terminating...';
+      elements.modalConfirmBtn.textContent = 'סוגר תהליך...';
       
       const success = await executeKill(portObj.pid, portObj.port);
       elements.confirmModal.classList.add('hidden');
@@ -406,9 +525,9 @@ function openConfirmModal(action, portObj) {
       }
     };
   } else if (action === 'restart') {
-    elements.modalTitle.textContent = 'Restart unavailable';
-    elements.modalDesc.textContent = `Restart is disabled for port ${portObj.port}. Re-running arbitrary command lines is unsafe until the backend exposes an explicit command allowlist.`;
-    elements.modalConfirmBtn.textContent = 'Restart Disabled';
+    elements.modalTitle.textContent = 'אתחול אינו זמין';
+    elements.modalDesc.textContent = `אתחול תוכנה מנוטרל עבור פורט ${portObj.port}. הרצת פקודות הפעלה אינה נתמכת כרגע.`;
+    elements.modalConfirmBtn.textContent = 'אתחול כבוי';
     elements.modalConfirmBtn.className = 'btn btn-secondary';
     elements.modalConfirmBtn.disabled = true;
     elements.modalConfirmBtn.onclick = null;
@@ -448,14 +567,14 @@ function openDetailsModal(portObj) {
   elements.specPid.textContent = portObj.pid;
   elements.specUser.textContent = portObj.user;
   elements.specProtocol.textContent = portObj.protocol;
-  elements.specType.textContent = portObj.type;
+  elements.specType.textContent = portObj.typeDisplay || portObj.type;
   elements.specCommand.textContent = portObj.commandLine;
 
   elements.btnCopyCommand.onclick = () => {
     navigator.clipboard.writeText(portObj.commandLine)
       .then(() => {
         const originalText = elements.btnCopyCommand.innerHTML;
-        elements.btnCopyCommand.innerHTML = 'Copied!';
+        elements.btnCopyCommand.innerHTML = 'הועתק!';
         elements.btnCopyCommand.style.background = 'var(--color-success-bg)';
         elements.btnCopyCommand.style.color = 'var(--color-success)';
         setTimeout(() => {
@@ -466,7 +585,7 @@ function openDetailsModal(portObj) {
       })
       .catch(err => {
         console.error('Copy failed:', err);
-        showToast('Failed to copy to clipboard', 'error');
+        showToast('העתקת הפקודה ללוח נכשלה', 'error');
       });
   };
 
@@ -483,19 +602,14 @@ async function executeKill(pid, port) {
     });
     
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || data.error || 'Server error while terminating process');
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'שגיאה בסגירת התהליך בשרת');
     
-    showToast(`Successfully terminated PID ${pid} on port ${port}`, 'success');
+    showToast(`תהליך ${pid} בפורט ${port} נסגר בהצלחה!`, 'success');
     return true;
   } catch (err) {
     showToast(err.message, 'error');
     return false;
   }
-}
-
-async function executeRestart() {
-  showToast('Restart is disabled until an explicit safe command allowlist exists', 'error');
-  return false;
 }
 
 // --- UTILITIES ---
@@ -549,7 +663,7 @@ function showToast(message, type = 'info') {
   closeBtn.addEventListener('click', dismiss);
   elements.toastContainer.appendChild(toast);
 
-  // Auto-dismiss
+  // Auto-dismiss in 5s
   setTimeout(dismiss, 5000);
 }
 
