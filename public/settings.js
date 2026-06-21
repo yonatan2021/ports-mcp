@@ -1,7 +1,7 @@
 /**
  * settings.js — Safety Settings Panel module
  *
- * Manages the safety configuration panel UI:
+ * Manages the safety configuration panel UI in Hebrew:
  * - Permission mode selector (read-only / allowlist / blocklist)
  * - Allowlist manager (add/remove ports)
  * - Blocklist manager (add/remove ports with warnings)
@@ -18,6 +18,13 @@
   let safetyState = null;       // cached from GET /api/safety
   let refreshTimerId = null;
   const REFRESH_INTERVAL = 10000; // 10 seconds
+
+  // Mode translations dictionary
+  const modeTranslations = {
+    'read-only': 'קריאה בלבד',
+    'allowlist': 'רשימה מותרת',
+    'blocklist': 'רשימה חסומה',
+  };
 
   // ─── DOM Cache ─────────────────────────────────────────────
   let els = {};
@@ -70,7 +77,7 @@
   async function fetchSafetyStatus() {
     try {
       const res = await fetch('/api/safety');
-      if (!res.ok) throw new Error('Safety API unavailable');
+      if (!res.ok) throw new Error('שירות הגדרות האבטחה אינו זמין');
       const data = await res.json();
       safetyState = data.safety;
       return safetyState;
@@ -89,10 +96,17 @@
         body: JSON.stringify({ mode }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Failed to set mode');
+      if (!res.ok) throw new Error(data.error?.message || 'שינוי המצב נכשל');
       await fetchSafetyStatus();
       renderAll();
-      showToast(`Safety mode changed to ${mode}`, 'info');
+      showToast(`מצב אבטחה שונה ל-"${modeTranslations[mode] || mode}"`, 'info');
+      
+      // Request standard list refresh since button states will change
+      if (typeof window.fetchPorts === 'function') {
+        window.fetchPorts();
+      } else if (typeof window.applyFilters === 'function') {
+        window.applyFilters();
+      }
       return true;
     } catch (err) {
       showToast(err.message, 'error');
@@ -108,10 +122,15 @@
         body: JSON.stringify({ action, port }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || `Failed to ${action} port ${port}`);
+      if (!res.ok) throw new Error(data.error?.message || `פעולה נכשלה עבור פורט ${port}`);
       await fetchSafetyStatus();
       renderAllowlist();
-      showToast(`Port ${port} ${action === 'add' ? 'added to' : 'removed from'} allowlist`, 'success');
+      showToast(`פורט ${port} ${action === 'add' ? 'נוסף ל' : 'הוסר מ'}רשימת הפורטים המותרים`, 'success');
+      
+      // Update main table badges
+      if (typeof window.applyFilters === 'function') {
+        window.applyFilters();
+      }
       return true;
     } catch (err) {
       showToast(err.message, 'error');
@@ -127,10 +146,15 @@
         body: JSON.stringify({ action, port }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || `Failed to ${action} port ${port}`);
+      if (!res.ok) throw new Error(data.error?.message || `פעולה נכשלה עבור פורט ${port}`);
       await fetchSafetyStatus();
       renderBlocklist();
-      showToast(`Port ${port} ${action === 'add' ? 'added to' : 'removed from'} blocklist`, action === 'add' ? 'warning' : 'success');
+      showToast(`פורט ${port} ${action === 'add' ? 'נוסף ל' : 'הוסר מ'}רשימת הפורטים החסומים`, action === 'add' ? 'warning' : 'success');
+      
+      // Update main table badges
+      if (typeof window.applyFilters === 'function') {
+        window.applyFilters();
+      }
       return true;
     } catch (err) {
       showToast(err.message, 'error');
@@ -143,7 +167,7 @@
   function renderAll() {
     if (!safetyState) {
       els.modeStatusBadge.textContent = '—';
-      els.modeLabel.textContent = 'No safety data';
+      els.modeLabel.textContent = 'אין נתוני אבטחה';
       renderAllowlist();
       renderBlocklist();
       renderStatus();
@@ -159,14 +183,14 @@
 
     // Update badge + label
     const modeLabels = {
-      'read-only': { icon: '👁️', label: 'Read-Only', cls: 'badge-readonly' },
-      'allowlist': { icon: '✅', label: 'Allowlist', cls: 'badge-allowlist' },
-      'blocklist': { icon: '🚫', label: 'Blocklist', cls: 'badge-blocklist' },
+      'read-only': { icon: '👁️', label: 'קריאה בלבד', cls: 'badge-readonly' },
+      'allowlist': { icon: '✅', label: 'רשימה מותרת', cls: 'badge-allowlist' },
+      'blocklist': { icon: '🚫', label: 'רשימה חסומה', cls: 'badge-blocklist' },
     };
     const ml = modeLabels[mode] || modeLabels['read-only'];
     els.modeStatusBadge.textContent = ml.icon + ' ' + ml.label;
     els.modeStatusBadge.className = 'badge badge-mode ' + ml.cls;
-    els.modeLabel.textContent = 'Mode: ' + ml.label;
+    els.modeLabel.textContent = 'מצב פעיל: ' + ml.label;
 
     // Show/hide sections based on mode
     els.allowlistSection.classList.toggle('hidden', mode !== 'allowlist');
@@ -180,20 +204,20 @@
 
   function renderAllowlist() {
     if (!safetyState) {
-      els.allowlistList.innerHTML = '<li class="list-empty">No data</li>';
+      els.allowlistList.innerHTML = '<li class="list-empty">אין נתונים</li>';
       els.allowlistCount.textContent = '0';
       return;
     }
     const ports = safetyState.allowlist || [];
     els.allowlistCount.textContent = ports.length;
     if (ports.length === 0) {
-      els.allowlistList.innerHTML = '<li class="list-empty">No ports in allowlist</li>';
+      els.allowlistList.innerHTML = '<li class="list-empty">אין פורטים ברשימה המותרת</li>';
       return;
     }
     els.allowlistList.innerHTML = ports.map(function (p) {
       return '<li class="port-list-item allowlist-item">' +
-        '<span class="port-num">' + p + '</span>' +
-        '<button class="btn-list-remove" data-action="remove-allowlist" data-port="' + p + '" aria-label="Remove port ' + p + ' from allowlist">&times;</button>' +
+        '<span class="port-num font-mono">' + p + '</span>' +
+        '<button class="btn-list-remove" data-action="remove-allowlist" data-port="' + p + '" aria-label="הסר פורט ' + p + ' מהרשימה המותרת">&times;</button>' +
         '</li>';
     }).join('');
 
@@ -207,21 +231,23 @@
 
   function renderBlocklist() {
     if (!safetyState) {
-      els.blocklistList.innerHTML = '<li class="list-empty">No data</li>';
+      els.blocklistList.innerHTML = '<li class="list-empty">אין נתונים</li>';
       els.blocklistCount.textContent = '0';
       return;
     }
     const ports = safetyState.blocklist || [];
     els.blocklistCount.textContent = ports.length;
     if (ports.length === 0) {
-      els.blocklistList.innerHTML = '<li class="list-empty">No ports in blocklist</li>';
+      els.blocklistList.innerHTML = '<li class="list-empty">אין פורטים ברשימה החסומה</li>';
       return;
     }
     els.blocklistList.innerHTML = ports.map(function (p) {
+      const isSystem = Number(p) <= 1024;
+      const tag = isSystem ? '<span class="port-type-badge system-badge">מערכת</span>' : '<span class="port-type-badge user-badge">משתמש</span>';
       return '<li class="port-list-item blocklist-item">' +
-        '<span class="port-num">' + p + '</span>' +
-        '<span class="port-type-badge system-badge">system</span>' +
-        '<button class="btn-list-remove" data-action="remove-blocklist" data-port="' + p + '" aria-label="Remove port ' + p + ' from blocklist">&times;</button>' +
+        '<span class="port-num font-mono">' + p + '</span>' +
+        tag +
+        '<button class="btn-list-remove" data-action="remove-blocklist" data-port="' + p + '" aria-label="הסר פורט ' + p + ' מהרשימה החסומה">&times;</button>' +
         '</li>';
     }).join('');
 
@@ -243,29 +269,60 @@
       return;
     }
 
-    els.statusMode.textContent = safetyState.mode || '—';
-    els.statusAllowlist.textContent = (safetyState.allowlist || []).length + ' ports';
-    els.statusBlocklist.textContent = (safetyState.blocklist || []).length + ' ports';
+    els.statusMode.textContent = modeTranslations[safetyState.mode] || safetyState.mode || '—';
+    els.statusAllowlist.textContent = (safetyState.allowlist || []).length + ' פורטים';
+    els.statusBlocklist.textContent = (safetyState.blocklist || []).length + ' פורטים';
     els.statusUser.textContent = safetyState.currentUser || '—';
-    els.statusRateLimit.textContent = (safetyState.maxOpsPerMinute || '—') + ' / min';
-    els.statusCooldown.textContent = ((safetyState.cooldownMs || 0) / 1000) + 's';
+    els.statusRateLimit.textContent = (safetyState.maxOpsPerMinute || '—') + ' לדקה';
+    els.statusCooldown.textContent = ((safetyState.cooldownMs || 0) / 1000) + ' שנ\'';
   }
 
   function updateHeaderBadge() {
     if (!els.headerSafetyBadge) return;
     if (!safetyState) {
-      els.headerSafetyBadge.textContent = '🔒';
-      els.headerSafetyBadge.title = 'Safety status unavailable';
+      // Show locked icon with red color
+      els.headerSafetyBadge.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="2" style="width:16px;height:16px;">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      `;
+      els.headerSafetyBadge.title = 'מצב הגנה אינו זמין';
       return;
     }
     const mode = safetyState.mode || 'read-only';
-    const icons = {
-      'read-only': '👁️',
-      'allowlist': '✅',
-      'blocklist': '🚫',
-    };
-    els.headerSafetyBadge.textContent = icons[mode] || '🔒';
-    els.headerSafetyBadge.title = 'Safety mode: ' + mode + (mode === 'read-only' ? ' — no destructive actions allowed' : '');
+    
+    // Choose lock SVG depending on mode
+    let badgeColor = 'var(--text-secondary)';
+    let isLocked = true;
+    if (mode === 'read-only') {
+      badgeColor = 'var(--color-info)';
+      isLocked = true;
+    } else if (mode === 'allowlist') {
+      badgeColor = 'var(--color-success)';
+      isLocked = false;
+    } else if (mode === 'blocklist') {
+      badgeColor = 'var(--color-warning)';
+      isLocked = false;
+    }
+
+    if (isLocked) {
+      els.headerSafetyBadge.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="${badgeColor}" stroke-width="2" style="width:16px;height:16px;">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      `;
+    } else {
+      els.headerSafetyBadge.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="${badgeColor}" stroke-width="2" style="width:16px;height:16px;">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+        </svg>
+      `;
+    }
+
+    els.headerSafetyBadge.title = 'מצב הגנה: ' + (modeTranslations[mode] || mode) + (mode === 'read-only' ? ' — כל פעולות הסגירה חסומות' : ' — מותר לבצע פעולות בכפוף לאבטחה');
   }
 
   // ─── Event Handlers ────────────────────────────────────────
@@ -298,7 +355,7 @@
     if (!val) return;
     const port = Number(val);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      showToast('Invalid port: must be 1–65535', 'error');
+      showToast('שגיאה: פורט חייב להיות מספר שלם בין 1 ל-65535', 'error');
       return;
     }
     manageAllowlist('add', port);
@@ -310,11 +367,11 @@
     if (!val) return;
     const port = Number(val);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      showToast('Invalid port: must be 1–65535', 'error');
+      showToast('שגיאה: פורט חייב להיות מספר שלם בין 1 ל-65535', 'error');
       return;
     }
-    // Warn before adding to blocklist
-    if (!confirm('Adding port ' + port + ' to blocklist will prevent destructive operations on it. Are you sure?')) {
+    // Warn before adding to blocklist in Hebrew
+    if (!confirm('הוספת פורט ' + port + ' לרשימה החסומה תמנע לחלוטין אפשרות לסגור את השירות הרץ עליו. האם להמשיך?')) {
       return;
     }
     manageBlocklist('add', port);
@@ -349,12 +406,10 @@
   // ─── Toast (compatible with app.js showToast) ──────────────
 
   function showToast(message, type) {
-    // Use global showToast from app.js if available
     if (typeof window.showToast === 'function') {
       window.showToast(message, type);
       return;
     }
-    // Fallback: simple console
     console.log('[' + type + '] ' + message);
   }
 
