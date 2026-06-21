@@ -152,3 +152,16 @@ test('isSystemProcess correctly identifies system and user processes', () => {
   assert.equal(isSystemProcess({ user: 'yonig', processName: 'python3', commandLine: 'python3 -m http.server' }), false);
 });
 
+test('listPorts enriches results with isSystem', async () => {
+  const service = createPortService({
+    listPorts: async () => [
+      { port: 3000, pid: 123, processName: 'node', user: 'yonig', type: 'IPv4', protocol: 'TCP', address: '*:3000', commandLine: 'node server.js' },
+      { port: 7000, pid: 456, processName: 'ControlCenter', user: 'yonig', type: 'IPv4', protocol: 'TCP', address: '*:7000', commandLine: '/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter' }
+    ]
+  });
+  const ports = await service.listPorts();
+  assert.equal(ports[0].isSystem, false);
+  assert.equal(ports[1].isSystem, true);
+});
+
+

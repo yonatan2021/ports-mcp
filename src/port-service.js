@@ -151,17 +151,22 @@ function createPortService(options = {}) {
   }
 
   async function listPorts() {
+    let ports;
     if (options.listPorts) {
-      const ports = await options.listPorts();
-      let sorted = [...ports].sort((a, b) => a.port - b.port || a.pid - b.pid);
-      if (sorted.length > MAX_PORTS_RETURNED) sorted.length = MAX_PORTS_RETURNED;
-      return sorted;
+      ports = await options.listPorts();
+    } else {
+      const { stdout } = await runner.execFile('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n'], { allowNonZero: true });
+      const rawPorts = parseLsofOutput(stdout);
+      const uniquePids = [...new Set(rawPorts.map(p => p.pid))];
+      const commandMap = await getProcessCommands(uniquePids);
+      ports = rawPorts.map(p => ({ ...p, commandLine: commandMap[p.pid] || 'Unknown command' }));
     }
-    const { stdout } = await runner.execFile('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n'], { allowNonZero: true });
-    const ports = parseLsofOutput(stdout);
-    const uniquePids = [...new Set(ports.map(p => p.pid))];
-    const commandMap = await getProcessCommands(uniquePids);
-    let results = ports.map(p => ({ ...p, commandLine: commandMap[p.pid] || 'Unknown command' })).sort((a, b) => a.port - b.port || a.pid - b.pid);
+
+    let results = ports.map(p => {
+      const enriched = { ...p, commandLine: p.commandLine || 'Unknown command' };
+      return { ...enriched, isSystem: p.isSystem !== undefined ? p.isSystem : isSystemProcess(enriched) };
+    }).sort((a, b) => a.port - b.port || a.pid - b.pid);
+
     if (results.length > MAX_PORTS_RETURNED) results.length = MAX_PORTS_RETURNED;
     return results;
   }
