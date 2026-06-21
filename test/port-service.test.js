@@ -132,3 +132,23 @@ test('restartProcessOnPort is intentionally unavailable without an allowlisted r
     (err) => err instanceof PortManagerError && err.code === 'RESTART_NOT_IMPLEMENTED'
   );
 });
+
+test('isSystemProcess correctly identifies system and user processes', () => {
+  const { isSystemProcess } = require('../src/port-service');
+
+  // 1. System user should be system process
+  assert.equal(isSystemProcess({ user: 'root', processName: 'node', commandLine: 'node' }), true);
+  assert.equal(isSystemProcess({ user: '_windowserver', processName: 'WindowServer', commandLine: 'WindowServer' }), true);
+
+  // 2. System path should be system process
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'rapportd', commandLine: '/usr/libexec/rapportd' }), true);
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'launchd', commandLine: '/System/Library/CoreServices/launchd' }), true);
+
+  // 3. System process name should be system process
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'WindowServer', commandLine: 'WindowServer' }), true);
+
+  // 4. Custom developer process should NOT be system process
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'node', commandLine: 'node server.js' }), false);
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'python3', commandLine: 'python3 -m http.server' }), false);
+});
+

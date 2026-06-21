@@ -18,6 +18,35 @@ function stripUserPaths(text) {
   return text.replace(USER_DIR_PATTERN, '/Users/<redacted>');
 }
 
+function isSystemProcess(portObj) {
+  if (!portObj) return false;
+  const user = portObj.user;
+  if (user && (user === 'root' || user.startsWith('_'))) {
+    return true;
+  }
+
+  const cmd = portObj.commandLine || '';
+  if (
+    cmd.startsWith('/System/') ||
+    cmd.startsWith('/usr/libexec/') ||
+    cmd.startsWith('/usr/sbin/')
+  ) {
+    return true;
+  }
+
+  const name = (portObj.processName || '').toLowerCase();
+  const isCritical = PROCESS_BLOCKLIST.has(name) ||
+                     name === 'controlcenter' ||
+                     name === 'control center' ||
+                     name === 'windowserver';
+  if (isCritical) {
+    return true;
+  }
+
+  return false;
+}
+
+
 function createRateLimiter({ maxPerMinute = RATE_LIMIT.maxKillsPerMinute, cooldownMs = RATE_LIMIT.cooldownMs } = {}) {
   const timestamps = [];
   function check() {
@@ -211,4 +240,4 @@ function createPortService(options = {}) {
   return { listPorts, findProcessByPort, killProcessOnPort, restartProcessOnPort };
 }
 
-module.exports = { PortManagerError, parseLsofOutput, createPortService, stripUserPaths, PROCESS_BLOCKLIST, MAX_PORTS_RETURNED };
+module.exports = { PortManagerError, parseLsofOutput, createPortService, stripUserPaths, PROCESS_BLOCKLIST, MAX_PORTS_RETURNED, isSystemProcess };
