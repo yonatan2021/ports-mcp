@@ -164,4 +164,78 @@ test('listPorts enriches results with isSystem', async () => {
   assert.equal(ports[1].isSystem, true);
 });
 
+const os = require('node:os');
+
+test('getSystemUsage returns CPU and memory statistics', async () => {
+  const service = createPortService();
+  const usage = await service.getSystemUsage();
+  assert.ok(typeof usage.cpu === 'number');
+  assert.ok(typeof usage.memory.percentage === 'number');
+  assert.ok(usage.memory.totalBytes > 0);
+});
+
+test('getSystemProcesses parses ps output correctly', async () => {
+  const psStdout = ` %CPU   RSS STAT   PID USER COMM
+ 12.5 1048576 S   1234 yoni /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+  0.0  51200 T   5678 yoni /usr/local/bin/node
+  1.5 2048000 R      1 root /sbin/launchd
+`;
+  const runner = {
+    execFile: async () => ({ stdout: psStdout, stderr: '', exitCode: 0 })
+  };
+  const service = createPortService({ runner, currentUser: 'yoni' });
+  const list = await service.getSystemProcesses();
+
+  assert.equal(list.length, 3);
+  assert.equal(list[0].pid, 1234);
+  assert.equal(list[0].processName, 'Google Chrome');
+  assert.equal(list[0].cpu, 12.5);
+  assert.equal(list[0].memoryMb, 1024.0);
+  assert.equal(list[0].isSuspended, false);
+  assert.equal(list[0].isSystem, false);
+
+  assert.equal(list[1].pid, 1);
+  assert.equal(list[1].isSystem, true);
+
+  assert.equal(list[2].pid, 5678);
+  assert.equal(list[2].isSuspended, true);
+});
+
+test('suspendProcess/resumeProcess/killProcess operate on target pid', async () => {
+  const psStdout = ` %CPU   RSS STAT   PID USER COMM
+  0.0  51200 S   5678 yoni /usr/local/bin/node
+`;
+  const runner = {
+    execFile: async () => ({ stdout: psStdout, stderr: '', exitCode: 0 })
+  };
+  const signals = [];
+  const service = createPortService({
+    runner,
+    selfPid: 9999,
+    killFn: (pid, signal) => signals.push([pid, signal])
+  });
+
+  // Suspend
+  const suspendRes = await service.suspendProcess({ pid: 5678 });
+  assert.deepEqual(suspendRes, { ok: true, pid: 5678, processName: 'node' });
+  assert.deepEqual(signals, [[5678, 'SIGSTOP']]);
+
+  // Resume
+  const resumeRes = await service.resumeProcess({ pid: 5678 });
+  assert.deepEqual(resumeRes, { ok: true, pid: 5678, processName: 'node' });
+  assert.deepEqual(signals, [[5678, 'SIGSTOP'], [5678, 'SIGCONT']]);
+
+  // Kill (dryRun by default)
+  const killDryRes = await service.killProcess({ pid: 5678 });
+  assert.equal(killDryRes.dryRun, true);
+  assert.equal(killDryRes.wouldSignal, 'SIGTERM');
+
+  // Kill (confirm)
+  const killConfirmRes = await service.killProcess({ pid: 5678, confirm: true });
+  assert.equal(killConfirmRes.dryRun, false);
+  assert.equal(killConfirmRes.signalSent, 'SIGTERM');
+  assert.deepEqual(signals, [[5678, 'SIGSTOP'], [5678, 'SIGCONT'], [5678, 'SIGTERM']]);
+});
+
+
 

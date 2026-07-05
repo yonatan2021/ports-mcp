@@ -1,4 +1,6 @@
 const { execFile: childExecFile } = require('node:child_process');
+const os = require('node:os');
+
 
 const MAX_PORTS_RETURNED = 500;
 const PROCESS_BLOCKLIST = new Set([
@@ -242,7 +244,143 @@ function createPortService(options = {}) {
     throw new PortManagerError('RESTART_NOT_IMPLEMENTED', 'restart_process_on_port is intentionally disabled; arbitrary shell restart is unsafe.', { status: 501 });
   }
 
-  return { listPorts, findProcessByPort, killProcessOnPort, restartProcessOnPort };
+  async function getSystemUsage() {
+    const totalBytes = os.totalmem();
+    const freeBytes = os.freemem();
+    const usedBytes = totalBytes - freeBytes;
+    const memoryPercentage = parseFloat(((usedBytes / totalBytes) * 100).toFixed(1));
+
+    // Dynamic CPU calculation by sampling os.cpus()
+    const cpus1 = os.cpus();
+    await sleep(150);
+    const cpus2 = os.cpus();
+
+    let idleDiff = 0;
+    let totalDiff = 0;
+    for (let i = 0; i < cpus1.length; i++) {
+      const t1 = cpus1[i].times;
+      const t2 = cpus2[i].times;
+      const idle = t2.idle - t1.idle;
+      const user = t2.user - t1.user;
+      const sys = t2.sys - t1.sys;
+      const irq = t2.irq - t1.irq;
+      const nice = t2.nice - t1.nice;
+      idleDiff += idle;
+      totalDiff += idle + user + sys + irq + nice;
+    }
+    const cpuPercentage = totalDiff === 0 ? 0 : parseFloat(((1 - idleDiff / totalDiff) * 100).toFixed(1));
+
+    return {
+      cpu: cpuPercentage,
+      memory: {
+        usedBytes,
+        totalBytes,
+        percentage: memoryPercentage
+      }
+    };
+  }
+
+  async function getSystemProcesses() {
+    const { stdout } = await runner.execFile('ps', ['-A', '-o', 'pcpu,rss,state,pid,user,comm'], { allowNonZero: true });
+    const lines = stdout.trim().split('\n').slice(1);
+    const processes = [];
+
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 6) continue;
+      const cpu = parseFloat(parts[0]);
+      const rss = parseInt(parts[1], 10);
+      const state = parts[2];
+      const pid = parseInt(parts[3], 10);
+      const user = parts[4];
+      const commandLine = parts.slice(5).join(' ');
+
+      if (Number.isNaN(pid)) continue;
+
+      const baseName = commandLine.split('/').pop() || 'Unknown';
+      const processName = baseName.replace(/\.app\/Contents\/MacOS\/.+$/, '').replace(/\.app$/, '');
+      const isSuspended = state.includes('T');
+
+      const procObj = {
+        pid,
+        processName,
+        cpu,
+        memoryMb: parseFloat((rss / 1024).toFixed(1)),
+        user,
+        isSuspended,
+        commandLine,
+      };
+
+      procObj.isSystem = isSystemProcess(procObj);
+      processes.push(procObj);
+    }
+
+    // Sort by CPU desc, limit to 50
+    return processes.sort((a, b) => b.cpu - a.cpu || b.memoryMb - a.memoryMb).slice(0, 50);
+  }
+
+  async function suspendProcess({ pid }) {
+    const normalizedPid = validateInteger('pid', pid, { min: 1 });
+    const processes = await getSystemProcesses();
+    const target = processes.find(p => p.pid === normalizedPid);
+    if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
+
+    await runSafetyCheck(target);
+
+    if (normalizedPid === selfPid) {
+      throw new PortManagerError('REFUSE_SELF', 'Refusing to suspend Port Manager itself', { status: 403 });
+    }
+
+    killFn(normalizedPid, 'SIGSTOP');
+    auditLog({ action: 'suspend', pid: normalizedPid, processName: target.processName, user: target.user });
+    return { ok: true, pid: normalizedPid, processName: target.processName };
+  }
+
+  async function resumeProcess({ pid }) {
+    const normalizedPid = validateInteger('pid', pid, { min: 1 });
+    const processes = await getSystemProcesses();
+    const target = processes.find(p => p.pid === normalizedPid);
+    if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
+
+    await runSafetyCheck(target);
+
+    killFn(normalizedPid, 'SIGCONT');
+    auditLog({ action: 'resume', pid: normalizedPid, processName: target.processName, user: target.user });
+    return { ok: true, pid: normalizedPid, processName: target.processName };
+  }
+
+  async function killProcess({ pid, confirm = false }) {
+    const normalizedPid = validateInteger('pid', pid, { min: 1 });
+    const processes = await getSystemProcesses();
+    const target = processes.find(p => p.pid === normalizedPid);
+    if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
+
+    await runSafetyCheck(target);
+
+    if (normalizedPid === selfPid) {
+      throw new PortManagerError('REFUSE_SELF', 'Refusing to terminate Port Manager itself', { status: 403 });
+    }
+
+    if (confirm !== true) {
+      return { dryRun: true, wouldSignal: 'SIGTERM', target };
+    }
+
+    killFn(normalizedPid, 'SIGTERM');
+    auditLog({ action: 'kill-system-process', pid: normalizedPid, processName: target.processName, user: target.user });
+    return { dryRun: false, signalSent: 'SIGTERM', target };
+  }
+
+  return {
+    listPorts,
+    findProcessByPort,
+    killProcessOnPort,
+    restartProcessOnPort,
+    getSystemUsage,
+    getSystemProcesses,
+    suspendProcess,
+    resumeProcess,
+    killProcess
+  };
 }
 
 module.exports = { PortManagerError, parseLsofOutput, createPortService, stripUserPaths, PROCESS_BLOCKLIST, MAX_PORTS_RETURNED, isSystemProcess };
