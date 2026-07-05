@@ -144,9 +144,9 @@ function createPortService(options = {}) {
     if (blocked) throw new PortManagerError('PROCESS_BLOCKED', `Process "${name}" is on the system blocklist and cannot be terminated.`, { status: 403, details: { processName: name } });
   }
 
-  async function runSafetyCheck(target, { allowSystemPort = false } = {}) {
+  async function runSafetyCheck(target, { allowSystemPort = false, confirm = false } = {}) {
     if (!safetyLayer) return;
-    const result = await safetyLayer.checkDestructive(target, { allowSystemPort });
+    const result = await safetyLayer.checkDestructive(target, { allowSystemPort, confirm });
     if (!result.ok) {
       throw new PortManagerError(`SAFETY_${result.check.toUpperCase()}`, result.reason, { status: 403, details: result.details || {} });
     }
@@ -200,7 +200,7 @@ function createPortService(options = {}) {
     if (portInfo.pid !== normalizedPid) throw new PortManagerError('PORT_PID_MISMATCH', `Port ${normalizedPort} is held by PID ${portInfo.pid}, not PID ${normalizedPid}`, { status: 409, details: { requestedPid: normalizedPid, actualPid: portInfo.pid, port: normalizedPort } });
 
     // Safety layer check (runs before all other checks for composability)
-    await runSafetyCheck(portInfo, { allowSystemPort });
+    await runSafetyCheck(portInfo, { allowSystemPort, confirm });
 
     // Self check
     if (normalizedPid === selfPid || normalizedPort === selfPort) throw new PortManagerError('REFUSE_SELF', 'Refusing to terminate Port Manager itself', { status: 403, details: { pid: normalizedPid, port: normalizedPort, selfPid, selfPort } });
@@ -280,8 +280,13 @@ function createPortService(options = {}) {
     };
   }
 
-  async function getSystemProcesses() {
-    const { stdout } = await runner.execFile('ps', ['-A', '-o', 'pcpu,rss,state,pid,user,comm'], { allowNonZero: true });
+  async function getSystemProcesses({ pid } = {}) {
+    const args = ['-A', '-o', 'pcpu,rss,state,pid,user,comm'];
+    if (pid !== undefined) {
+      args[0] = '-p';
+      args.splice(1, 0, String(pid));
+    }
+    const { stdout } = await runner.execFile('ps', args, { allowNonZero: true });
     const lines = stdout.trim().split('\n').slice(1);
     const processes = [];
 
@@ -291,18 +296,18 @@ function createPortService(options = {}) {
       const cpu = parseFloat(parts[0]);
       const rss = parseInt(parts[1], 10);
       const state = parts[2];
-      const pid = parseInt(parts[3], 10);
+      const pidVal = parseInt(parts[3], 10);
       const user = parts[4];
       const commandLine = parts.slice(5).join(' ');
 
-      if (Number.isNaN(pid)) continue;
+      if (Number.isNaN(pidVal) || Number.isNaN(cpu) || Number.isNaN(rss)) continue;
 
-      const baseName = commandLine.split('/').pop() || 'Unknown';
-      const processName = baseName.replace(/\.app\/Contents\/MacOS\/.+$/, '').replace(/\.app$/, '');
+      const friendlyCmd = commandLine.replace(/\.app\/Contents\/MacOS\/.+$/, '').replace(/\.app$/, '');
+      const processName = friendlyCmd.split('/').pop() || 'Unknown';
       const isSuspended = state.includes('T');
 
       const procObj = {
-        pid,
+        pid: pidVal,
         processName,
         cpu,
         memoryMb: parseFloat((rss / 1024).toFixed(1)),
@@ -315,17 +320,25 @@ function createPortService(options = {}) {
       processes.push(procObj);
     }
 
+    if (pid !== undefined) {
+      return processes;
+    }
+
     // Sort by CPU desc, limit to 50
     return processes.sort((a, b) => b.cpu - a.cpu || b.memoryMb - a.memoryMb).slice(0, 50);
   }
 
   async function suspendProcess({ pid }) {
     const normalizedPid = validateInteger('pid', pid, { min: 1 });
-    const processes = await getSystemProcesses();
+    const processes = await getSystemProcesses({ pid: normalizedPid });
     const target = processes.find(p => p.pid === normalizedPid);
     if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
 
-    await runSafetyCheck(target);
+    await runSafetyCheck(target, { confirm: true });
+
+    if (!safetyLayer) {
+      checkProcessBlocklist(target.processName);
+    }
 
     if (normalizedPid === selfPid) {
       throw new PortManagerError('REFUSE_SELF', 'Refusing to suspend Port Manager itself', { status: 403 });
@@ -338,11 +351,15 @@ function createPortService(options = {}) {
 
   async function resumeProcess({ pid }) {
     const normalizedPid = validateInteger('pid', pid, { min: 1 });
-    const processes = await getSystemProcesses();
+    const processes = await getSystemProcesses({ pid: normalizedPid });
     const target = processes.find(p => p.pid === normalizedPid);
     if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
 
-    await runSafetyCheck(target);
+    await runSafetyCheck(target, { confirm: true });
+
+    if (!safetyLayer) {
+      checkProcessBlocklist(target.processName);
+    }
 
     killFn(normalizedPid, 'SIGCONT');
     auditLog({ action: 'resume', pid: normalizedPid, processName: target.processName, user: target.user });
@@ -351,11 +368,15 @@ function createPortService(options = {}) {
 
   async function killProcess({ pid, confirm = false }) {
     const normalizedPid = validateInteger('pid', pid, { min: 1 });
-    const processes = await getSystemProcesses();
+    const processes = await getSystemProcesses({ pid: normalizedPid });
     const target = processes.find(p => p.pid === normalizedPid);
     if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
 
-    await runSafetyCheck(target);
+    await runSafetyCheck(target, { confirm });
+
+    if (!safetyLayer) {
+      checkProcessBlocklist(target.processName);
+    }
 
     if (normalizedPid === selfPid) {
       throw new PortManagerError('REFUSE_SELF', 'Refusing to terminate Port Manager itself', { status: 403 });

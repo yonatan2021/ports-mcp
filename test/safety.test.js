@@ -364,10 +364,10 @@ test('SafetyLayer rate limits after exceeding max per minute', async () => {
     { port: 3001, pid: 101, processName: 'node', user: 'yoni' },
   ];
 
-  const r1 = await layer.checkDestructive(targets[0]);
+  const r1 = await layer.checkDestructive(targets[0], { confirm: true });
   assert.equal(r1.ok, true);
 
-  const r2 = await layer.checkDestructive(targets[1]);
+  const r2 = await layer.checkDestructive(targets[1], { confirm: true });
   assert.equal(r2.ok, true);
 
   const r3 = await layer.checkDestructive(targets[0]);
@@ -379,7 +379,7 @@ test('SafetyLayer enforces cooldown between operations', async () => {
   const config = new SafetyConfig({ mode: 'allowlist', allowlist: [3000, 3001], verifyOwner: false, cooldownMs: 5000 });
   const layer = new SafetyLayer({ config, currentUser: 'yoni' });
 
-  const r1 = await layer.checkDestructive({ port: 3000, pid: 100, processName: 'node', user: 'yoni' });
+  const r1 = await layer.checkDestructive({ port: 3000, pid: 100, processName: 'node', user: 'yoni' }, { confirm: true });
   assert.equal(r1.ok, true);
 
   const r2 = await layer.checkDestructive({ port: 3001, pid: 101, processName: 'node', user: 'yoni' });
