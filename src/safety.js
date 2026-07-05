@@ -155,7 +155,7 @@ class SafetyLayer {
     }
 
     // === 2. Allowlist / Blocklist ===
-    if (target.port !== undefined) {
+    if (target.port != null) {
       if (this.config.mode === 'allowlist') {
         if (!this.config.allowlist.has(target.port)) {
           return {
@@ -180,7 +180,7 @@ class SafetyLayer {
     }
 
     // === 3. System port protection (ports < 1024) ===
-    if (target.port !== undefined && target.port < 1024 && allowSystemPort !== true) {
+    if (target.port != null && target.port < 1024 && allowSystemPort !== true) {
       // Check if it's explicitly in the allowlist (override)
       if (!this.config.allowlist.has(target.port)) {
         return {
@@ -231,19 +231,21 @@ class SafetyLayer {
       }
 
       // Double-check via ps as fallback (more reliable than lsof user field)
-      try {
-        const owner = await this._getProcessOwner(target.pid);
-        if (owner && owner !== this.currentUser) {
-          return {
-            ok: false,
-            check: 'owner_verified',
-            reason: `Process PID ${target.pid} is owned by "${owner}" (confirmed via ps), not by "${this.currentUser}". Blocked.`,
-            details: { pid: target.pid, verifiedOwner: owner, currentUser: this.currentUser },
-          };
+      if (target.pid != null) {
+        try {
+          const owner = await this._getProcessOwner(target.pid);
+          if (owner && owner !== this.currentUser) {
+            return {
+              ok: false,
+              check: 'owner_verified',
+              reason: `Process PID ${target.pid} is owned by "${owner}" (confirmed via ps), not by "${this.currentUser}". Blocked.`,
+              details: { pid: target.pid, verifiedOwner: owner, currentUser: this.currentUser },
+            };
+          }
+        } catch (_err) {
+          // If we can't verify, log but don't block — lsof user field is sufficient
+          console.warn(`[safety] Could not verify owner of PID ${target.pid}: ${_err.message}`);
         }
-      } catch (_err) {
-        // If we can't verify, log but don't block — lsof user field is sufficient
-        console.warn(`[safety] Could not verify owner of PID ${target.pid}: ${_err.message}`);
       }
     }
 
