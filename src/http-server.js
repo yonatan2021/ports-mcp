@@ -106,6 +106,54 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
     }
   });
 
+  app.get('/api/system/usage', async (_req, res) => {
+    try {
+      const usage = await service.getSystemUsage();
+      res.json(usage);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.get('/api/system/processes', async (_req, res) => {
+    try {
+      const processes = await service.getSystemProcesses();
+      res.json({ processes });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/suspend', async (req, res) => {
+    try {
+      const { pid } = req.body || {};
+      const result = await service.suspendProcess({ pid });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/resume', async (req, res) => {
+    try {
+      const { pid } = req.body || {};
+      const result = await service.resumeProcess({ pid });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/kill', async (req, res) => {
+    try {
+      const { pid, confirm } = req.body || {};
+      const result = await service.killProcess({ pid, confirm });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   // ─── Safety API ──────────────────────────────────────────────
 
   /** GET /api/safety — current safety status snapshot */
