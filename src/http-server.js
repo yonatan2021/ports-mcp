@@ -126,7 +126,11 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
 
   app.post('/api/system/suspend', async (req, res) => {
     try {
-      const { pid } = req.body || {};
+      const body = req.body || {};
+      const pid = Number(body.pid);
+      if (!Number.isInteger(pid) || pid < 1) {
+        return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
+      }
       const result = await service.suspendProcess({ pid });
       res.json(result);
     } catch (error) {
@@ -136,7 +140,11 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
 
   app.post('/api/system/resume', async (req, res) => {
     try {
-      const { pid } = req.body || {};
+      const body = req.body || {};
+      const pid = Number(body.pid);
+      if (!Number.isInteger(pid) || pid < 1) {
+        return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
+      }
       const result = await service.resumeProcess({ pid });
       res.json(result);
     } catch (error) {
@@ -146,8 +154,12 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
 
   app.post('/api/system/kill', async (req, res) => {
     try {
-      const { pid, confirm } = req.body || {};
-      const result = await service.killProcess({ pid, confirm });
+      const body = req.body || {};
+      const pid = Number(body.pid);
+      if (!Number.isInteger(pid) || pid < 1) {
+        return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
+      }
+      const result = await service.killProcess({ pid, confirm: body.confirm });
       res.json(result);
     } catch (error) {
       sendError(res, error);

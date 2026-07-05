@@ -355,7 +355,7 @@ function createPortService(options = {}) {
     const target = processes.find(p => p.pid === normalizedPid);
     if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
 
-    await runSafetyCheck(target, { confirm: true });
+    await runSafetyCheck(target, { confirm: false });
 
     if (!safetyLayer) {
       checkProcessBlocklist(target.processName);
