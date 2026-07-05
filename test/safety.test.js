@@ -554,3 +554,37 @@ test('SafetyLayer blocks destructive ops on processes flagged as isSystem', asyn
   assert.ok(result.reason.includes('system process'));
 });
 
+test('SafetyLayer permits port-less process for current user but blocks system processes', async () => {
+  const { SafetyConfig } = require('../src/config');
+  const { SafetyLayer } = require('../src/safety');
+  
+  // Safe user process with undefined port (blocklist mode)
+  const config = new SafetyConfig({ mode: 'blocklist' });
+  const safety = new SafetyLayer({
+    config,
+    currentUser: 'yonig',
+    selfPid: 9999
+  });
+
+  const userProc = { pid: 1234, processName: 'node', user: 'yonig', isSystem: false };
+  const res1 = await safety.checkDestructive(userProc);
+  assert.equal(res1.ok, true);
+
+  // System process with undefined port
+  const sysProc = { pid: 1, processName: 'launchd', user: 'root', isSystem: true };
+  const res2 = await safety.checkDestructive(sysProc);
+  assert.equal(res2.ok, false);
+  assert.equal(res2.check, 'system_process');
+
+  // Safe user process with undefined port (allowlist mode)
+  const configAllow = new SafetyConfig({ mode: 'allowlist' });
+  const safetyAllow = new SafetyLayer({
+    config: configAllow,
+    currentUser: 'yonig',
+    selfPid: 9999
+  });
+  const res3 = await safetyAllow.checkDestructive(userProc);
+  assert.equal(res3.ok, true);
+});
+
+

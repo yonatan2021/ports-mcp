@@ -155,30 +155,32 @@ class SafetyLayer {
     }
 
     // === 2. Allowlist / Blocklist ===
-    if (this.config.mode === 'allowlist') {
-      if (!this.config.allowlist.has(target.port)) {
-        return {
-          ok: false,
-          check: 'allowlist',
-          reason: `Port ${target.port} is not in the allowlist. Add it first (set_allowlist) or switch modes.`,
-          details: { port: target.port, mode: 'allowlist' },
-        };
+    if (target.port !== undefined) {
+      if (this.config.mode === 'allowlist') {
+        if (!this.config.allowlist.has(target.port)) {
+          return {
+            ok: false,
+            check: 'allowlist',
+            reason: `Port ${target.port} is not in the allowlist. Add it first (set_allowlist) or switch modes.`,
+            details: { port: target.port, mode: 'allowlist' },
+          };
+        }
       }
-    }
 
-    if (this.config.mode === 'blocklist') {
-      if (this.config.blocklist.has(target.port)) {
-        return {
-          ok: false,
-          check: 'blocklist',
-          reason: `Port ${target.port} is in the blocklist. Remove it first or switch modes.`,
-          details: { port: target.port, mode: 'blocklist' },
-        };
+      if (this.config.mode === 'blocklist') {
+        if (this.config.blocklist.has(target.port)) {
+          return {
+            ok: false,
+            check: 'blocklist',
+            reason: `Port ${target.port} is in the blocklist. Remove it first or switch modes.`,
+            details: { port: target.port, mode: 'blocklist' },
+          };
+        }
       }
     }
 
     // === 3. System port protection (ports < 1024) ===
-    if (target.port < 1024 && allowSystemPort !== true) {
+    if (target.port !== undefined && target.port < 1024 && allowSystemPort !== true) {
       // Check if it's explicitly in the allowlist (override)
       if (!this.config.allowlist.has(target.port)) {
         return {
@@ -219,10 +221,11 @@ class SafetyLayer {
     if (this.config.verifyOwner) {
       // The port info already has a 'user' field from lsof output
       if (target.user && target.user !== this.currentUser) {
+        const portContext = target.port !== undefined ? ` on port ${target.port}` : '';
         return {
           ok: false,
           check: 'owner',
-          reason: `Process on port ${target.port} is owned by "${target.user}", not by current user "${this.currentUser}". Can only terminate your own processes.`,
+          reason: `Process${portContext} is owned by "${target.user}", not by current user "${this.currentUser}". Can only terminate your own processes.`,
           details: { processOwner: target.user, currentUser: this.currentUser },
         };
       }
