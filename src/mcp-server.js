@@ -321,6 +321,74 @@ function createMcpServer({ service = createPortService(), safetyLayer = null } =
     }, 'get_safety_status')
   );
 
+  server.registerTool(
+    'get_system_usage',
+    {
+      title: 'Get system CPU and memory usage',
+      description: 'Returns real-time usage percentages for system-wide CPU and memory.',
+      inputSchema: {},
+    },
+    withTimeout(async () => {
+      const result = await agentTools.getSystemUsage();
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'get_system_usage')
+  );
+
+  server.registerTool(
+    'list_system_processes',
+    {
+      title: 'List resource-heavy system processes',
+      description: 'Returns the top 50 resource-heavy active processes running on macOS, indicating which are system processes.',
+      inputSchema: {},
+    },
+    withTimeout(async () => {
+      const result = await agentTools.listSystemProcesses();
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'list_system_processes')
+  );
+
+  server.registerTool(
+    'suspend_process',
+    {
+      title: 'Suspend/Pause a process',
+      description: 'Suspends an active process using SIGSTOP. Requires PID. Critical system processes are protected.',
+      inputSchema: {
+        pid: z.number().int().min(1),
+      },
+    },
+    withTimeout(async ({ pid }) => {
+      const result = await agentTools.suspendProcess({ pid });
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'suspend_process')
+  );
+
+  server.registerTool(
+    'resume_process',
+    {
+      title: 'Resume/Wake up a suspended process',
+      description: 'Resumes a suspended process using SIGCONT. Requires PID.',
+      inputSchema: {
+        pid: z.number().int().min(1),
+      },
+    },
+    withTimeout(async ({ pid }) => {
+      const result = await agentTools.resumeProcess({ pid });
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'resume_process')
+  );
+
   return server;
 }
 

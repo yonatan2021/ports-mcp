@@ -295,12 +295,52 @@ function createAgentTools({ service, safetyLayer, runner = null } = {}) {
     }, warnings);
   }
 
+  async function getSystemUsage() {
+    try {
+      const usage = await service.getSystemUsage();
+      return success(usage);
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
+  async function listSystemProcesses() {
+    try {
+      const processes = await service.getSystemProcesses();
+      return success({ processes });
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
+  async function suspendProcess({ pid }) {
+    try {
+      const result = await service.suspendProcess({ pid });
+      return success(result);
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
+  async function resumeProcess({ pid }) {
+    try {
+      const result = await service.resumeProcess({ pid });
+      return success(result);
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
   return {
     verifyProcessOwner,
     getProcessDetails,
     safeKillProcess,
     safeRestartProcess,
     getSafetyStatus,
+    getSystemUsage,
+    listSystemProcesses,
+    suspendProcess,
+    resumeProcess,
   };
 }
 
