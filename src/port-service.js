@@ -328,13 +328,13 @@ function createPortService(options = {}) {
     return processes.sort((a, b) => b.cpu - a.cpu || b.memoryMb - a.memoryMb).slice(0, 50);
   }
 
-  async function suspendProcess({ pid }) {
+  async function suspendProcess({ pid, confirm = false }) {
     const normalizedPid = validateInteger('pid', pid, { min: 1 });
     const processes = await getSystemProcesses({ pid: normalizedPid });
     const target = processes.find(p => p.pid === normalizedPid);
     if (!target) throw new PortManagerError('PROCESS_NOT_FOUND', `Process PID ${normalizedPid} not found`, { status: 404 });
 
-    await runSafetyCheck(target, { confirm: true });
+    await runSafetyCheck(target, { confirm });
 
     if (!safetyLayer) {
       checkProcessBlocklist(target.processName);
@@ -342,6 +342,10 @@ function createPortService(options = {}) {
 
     if (normalizedPid === selfPid) {
       throw new PortManagerError('REFUSE_SELF', 'Refusing to suspend Port Manager itself', { status: 403 });
+    }
+
+    if (confirm !== true) {
+      return { dryRun: true, wouldSignal: 'SIGSTOP', target };
     }
 
     killFn(normalizedPid, 'SIGSTOP');

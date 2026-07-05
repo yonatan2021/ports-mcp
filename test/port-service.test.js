@@ -215,8 +215,13 @@ test('suspendProcess/resumeProcess/killProcess operate on target pid', async () 
     killFn: (pid, signal) => signals.push([pid, signal])
   });
 
-  // Suspend
-  const suspendRes = await service.suspendProcess({ pid: 5678 });
+  // Suspend (dryRun by default)
+  const suspendDryRes = await service.suspendProcess({ pid: 5678 });
+  assert.equal(suspendDryRes.dryRun, true);
+  assert.equal(suspendDryRes.wouldSignal, 'SIGSTOP');
+
+  // Suspend (confirm)
+  const suspendRes = await service.suspendProcess({ pid: 5678, confirm: true });
   assert.deepEqual(suspendRes, { ok: true, pid: 5678, processName: 'node' });
   assert.deepEqual(signals, [[5678, 'SIGSTOP']]);
 

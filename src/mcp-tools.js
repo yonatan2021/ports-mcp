@@ -313,9 +313,9 @@ function createAgentTools({ service, safetyLayer, runner = null } = {}) {
     }
   }
 
-  async function suspendProcess({ pid }) {
+  async function suspendProcess({ pid, confirm = false }) {
     try {
-      const result = await service.suspendProcess({ pid });
+      const result = await service.suspendProcess({ pid, confirm });
       return success(result);
     } catch (err) {
       return wrapServiceError(err);

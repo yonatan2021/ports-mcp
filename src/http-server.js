@@ -131,7 +131,7 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
       if (!Number.isInteger(pid) || pid < 1) {
         return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
       }
-      const result = await service.suspendProcess({ pid });
+      const result = await service.suspendProcess({ pid, confirm: body.confirm });
       res.json(result);
     } catch (error) {
       sendError(res, error);

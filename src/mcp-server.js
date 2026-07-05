@@ -359,11 +359,12 @@ function createMcpServer({ service = createPortService(), safetyLayer = null } =
       title: 'Suspend/Pause a process',
       description: 'Suspends an active process using SIGSTOP. Requires PID. Critical system processes are protected.',
       inputSchema: {
-        pid: z.number().int().min(1),
+        pid: z.number().int().min(1).describe('The PID of the process to suspend/pause.'),
+        confirm: z.boolean().optional().default(false).describe('Set true to actually pause the process. Without it, this is a dry run.'),
       },
     },
-    withTimeout(async ({ pid }) => {
-      const result = await agentTools.suspendProcess({ pid });
+    withTimeout(async ({ pid, confirm }) => {
+      const result = await agentTools.suspendProcess({ pid, confirm });
       if (result.error) {
         return { isError: true, ...jsonText(result) };
       }
@@ -377,7 +378,7 @@ function createMcpServer({ service = createPortService(), safetyLayer = null } =
       title: 'Resume/Wake up a suspended process',
       description: 'Resumes a suspended process using SIGCONT. Requires PID.',
       inputSchema: {
-        pid: z.number().int().min(1),
+        pid: z.number().int().min(1).describe('The PID of the process to resume/wake up.'),
       },
     },
     withTimeout(async ({ pid }) => {
