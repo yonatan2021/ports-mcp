@@ -141,9 +141,10 @@ class SafetyLayer {
    *   Expected fields: { port, pid, processName, user, ... }
    * @param {object} [options]
    * @param {boolean} [options.allowSystemPort] — override system port protection
+   * @param {boolean} [options.confirm] — commit the operation to rate limiters
    * @returns {Promise<{ ok: boolean, check: string, reason?: string, details?: object }>}
    */
-  async checkDestructive(target, { allowSystemPort = false } = {}) {
+  async checkDestructive(target, { allowSystemPort = false, confirm = false } = {}) {
     // === 1. Permission Mode ===
     if (this.config.mode === 'read-only') {
       return {
@@ -273,9 +274,11 @@ class SafetyLayer {
       };
     }
 
-    // All checks passed — record rate limit usage
-    this._rateLimiter.record();
-    this._cooldown.record();
+    // All checks passed — record rate limit usage ONLY if confirmed
+    if (confirm === true) {
+      this._rateLimiter.record();
+      this._cooldown.record();
+    }
 
     return { ok: true, check: 'all_passed' };
   }
