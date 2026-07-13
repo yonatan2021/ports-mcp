@@ -168,3 +168,20 @@ test('settings.js is loaded after app.js', () => {
   assert.ok(settingsJsIndex > 0, 'settings.js script tag must exist');
   assert.ok(settingsJsIndex > appJsIndex, 'settings.js must be loaded after app.js');
 });
+
+test('UI includes performance management and monitoring widgets', () => {
+  // Check index.html for CPU, memory and warning banner
+  assert.match(indexHtml, /id="metric-cpu-usage"/);
+  assert.match(indexHtml, /id="metric-memory-usage"/);
+  assert.match(indexHtml, /id="warning-banner"/);
+  assert.match(indexHtml, /id="quick-clean-btn"/);
+  assert.match(indexHtml, /data-filter="system-resources"/);
+
+  // Check app.js for resource monitoring functions
+  assert.match(appJs, /updateSystemUsage/);
+  assert.match(appJs, /renderWarningBanner/);
+  assert.match(appJs, /fetchSystemProcesses/);
+  assert.match(appJs, /renderSystemProcessesTable/);
+  assert.match(appJs, /suspendSystemProcess/);
+  assert.match(appJs, /resumeSystemProcess/);
+});

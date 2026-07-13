@@ -1,12 +1,16 @@
 // App State
 let portsData = [];
 let filteredPorts = [];
-let activeFilter = 'all'; // 'all', 'user', 'system'
+let systemProcessesData = [];
+let filteredProcesses = [];
+let activeFilter = 'all'; // 'all', 'user', 'system', 'system-resources'
 let searchQuery = '';
 let currentSort = { column: 'port', order: 'asc' };
 let pollIntervalId = null;
+let systemUsageIntervalId = null;
 let destructiveActionContext = null;
 const POLL_INTERVAL = 8000; // 8 seconds
+const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
 
 // Self Port detection based on the loaded URL
 const selfPort = parseInt(window.location.port, 10) || 9999;
@@ -75,6 +79,18 @@ const elements = {
   metricActiveCount: document.getElementById('metric-active-count'),
   metricUserCount: document.getElementById('metric-user-count'),
   metricSystemCount: document.getElementById('metric-system-count'),
+  
+  // Metrics CPU/Memory
+  metricCpuUsage: document.getElementById('metric-cpu-usage'),
+  cpuBar: document.getElementById('cpu-bar'),
+  metricMemoryUsage: document.getElementById('metric-memory-usage'),
+  memoryBar: document.getElementById('memory-bar'),
+  
+  // Warning Banner
+  warningBanner: document.getElementById('warning-banner'),
+  warningMessage: document.getElementById('warning-message'),
+  quickCleanBtn: document.getElementById('quick-clean-btn'),
+  warningSuggestions: document.getElementById('warning-suggestions'),
 
   // Confirm Modal
   confirmModal: document.getElementById('confirm-modal'),
@@ -110,6 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   fetchPorts();
   startPolling();
+  updateSystemUsage();
+  startSystemUsagePolling();
 });
 
 function setupEventListeners() {
@@ -130,7 +148,11 @@ function setupEventListeners() {
       elements.filterTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       activeFilter = tab.dataset.filter;
-      applyFilters();
+      if (activeFilter === 'system-resources') {
+        fetchSystemProcesses();
+      } else {
+        applyFilters();
+      }
     });
   });
 
@@ -215,6 +237,18 @@ function stopPolling() {
   }
 }
 
+function startSystemUsagePolling() {
+  stopSystemUsagePolling();
+  systemUsageIntervalId = setInterval(updateSystemUsage, SYSTEM_USAGE_INTERVAL);
+}
+
+function stopSystemUsagePolling() {
+  if (systemUsageIntervalId) {
+    clearInterval(systemUsageIntervalId);
+    systemUsageIntervalId = null;
+  }
+}
+
 // --- DATA DEDUPLICATION LOGIC ---
 // Merges IPv4 & IPv6 duplicate rows for the same port and PID
 function deduplicatePorts(ports) {
@@ -248,6 +282,10 @@ function deduplicatePorts(ports) {
 
 // --- DATA FETCHING ---
 async function fetchPorts() {
+  if (activeFilter === 'system-resources') {
+    return fetchSystemProcesses();
+  }
+
   // Show loading spinner in Hebrew
   elements.tableBody.innerHTML = `
     <tr>
@@ -286,18 +324,112 @@ async function fetchPortsSilent() {
   }
 
   try {
-    const response = await fetch('/api/ports');
+    const isSystemRes = activeFilter === 'system-resources';
+    const url = isSystemRes ? '/api/system/processes' : '/api/ports';
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Silent fetch failed');
     const data = await response.json();
-    portsData = data.ports || [];
+    if (isSystemRes) {
+      systemProcessesData = data.processes || [];
+    } else {
+      portsData = data.ports || [];
+    }
     applyFilters();
   } catch (err) {
     console.warn('Silent refresh failed:', err);
   }
 }
 
+async function fetchSystemProcesses() {
+  elements.tableBody.innerHTML = `
+    <tr>
+      <td colspan="8" class="loading-state">
+        <div class="spinner"></div>
+        סורק תהליכי מערכת ומשאבים ב-macOS...
+      </td>
+    </tr>
+  `;
+  elements.emptyState.classList.add('hidden');
+  
+  try {
+    const response = await fetch('/api/system/processes');
+    if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
+    const data = await response.json();
+    systemProcessesData = data.processes || [];
+    applyFilters();
+  } catch (err) {
+    console.error(err);
+    elements.tableBody.innerHTML = `
+      <tr>
+        <td colspan="8" class="loading-state" style="color: var(--color-danger)">
+          ⚠️ לא מצליח ליצור קשר עם שרת מנהל הפורטים. ודא שהשרת רץ ורענן את הדף.
+        </td>
+      </tr>
+    `;
+    showToast('החיבור לשרת אבד. לא ניתן לטעון תהליכי מערכת.', 'error');
+  }
+}
+
+// --- TABLE HEADERS UPDATER ---
+function updateTableHeaders() {
+  const headers = document.querySelectorAll('.ports-table th');
+  if (headers.length < 8) return;
+  
+  if (activeFilter === 'system-resources') {
+    headers[0].innerHTML = '-';
+    headers[0].classList.remove('sortable');
+    headers[4].innerHTML = '-';
+    headers[5].innerHTML = 'סטטוס';
+    headers[5].classList.remove('sortable');
+    headers[6].innerHTML = 'משאבים';
+    headers[6].classList.remove('sortable');
+    
+    // Hide sort indicators for non-sortable columns
+    headers.forEach((th, idx) => {
+      if (idx !== 1 && idx !== 2 && idx !== 3) {
+        const ind = th.querySelector('.sort-indicator');
+        if (ind) ind.style.display = 'none';
+      }
+    });
+  } else {
+    headers[0].innerHTML = 'פורט <span class="sort-indicator">▲</span>';
+    headers[0].classList.add('sortable');
+    headers[4].innerHTML = 'פרוטוקול / סוג';
+    headers[5].innerHTML = 'שימוש ותפקיד הפורט';
+    headers[6].innerHTML = 'פקודת הפעלה';
+    
+    // Restore sort indicators
+    headers.forEach(th => {
+      const ind = th.querySelector('.sort-indicator');
+      if (ind) ind.style.display = '';
+    });
+  }
+}
+
 // --- FILTERING & SORTING ---
 function applyFilters() {
+  updateTableHeaders();
+
+  if (activeFilter === 'system-resources') {
+    filteredProcesses = systemProcessesData.filter(proc => {
+      if (searchQuery) {
+        const pidStr = String(proc.pid);
+        const name = (proc.processName || '').toLowerCase();
+        const cmd = (proc.commandLine || '').toLowerCase();
+        const user = (proc.user || '').toLowerCase();
+        
+        return pidStr.includes(searchQuery) ||
+               name.includes(searchQuery) ||
+               cmd.includes(searchQuery) ||
+               user.includes(searchQuery);
+      }
+      return true;
+    });
+    
+    sortAndRender();
+    return;
+  }
+
   filteredPorts = portsData.filter(portObj => {
     // 1. Tab filter
     if (activeFilter === 'system' && !portObj.isSystem) return false;
@@ -344,6 +476,30 @@ function updateMetrics() {
 }
 
 function sortAndRender() {
+  if (activeFilter === 'system-resources') {
+    const col = currentSort.column;
+    const isAsc = currentSort.order === 'asc' ? 1 : -1;
+    
+    // Default to 'cpu' if sorting on 'port' which doesn't exist on processes
+    let sortCol = col;
+    if (col === 'port') sortCol = 'cpu';
+    
+    filteredProcesses.sort((a, b) => {
+      let valA = a[sortCol];
+      let valB = b[sortCol];
+      
+      if (typeof valA === 'string') valA = valA.toLowerCase();
+      if (typeof valB === 'string') valB = valB.toLowerCase();
+      
+      if (valA < valB) return -1 * isAsc;
+      if (valA > valB) return 1 * isAsc;
+      return 0;
+    });
+    
+    renderSystemProcessesTable();
+    return;
+  }
+
   const col = currentSort.column;
   const isAsc = currentSort.order === 'asc' ? 1 : -1;
 
@@ -362,8 +518,102 @@ function sortAndRender() {
   renderTable();
 }
 
+function renderSystemProcessesTable() {
+  elements.tableBody.innerHTML = '';
+
+  if (filteredProcesses.length === 0) {
+    elements.emptyState.classList.remove('hidden');
+    return;
+  }
+
+  elements.emptyState.classList.add('hidden');
+
+  filteredProcesses.forEach(proc => {
+    const tr = document.createElement('tr');
+    if (proc.isSuspended) tr.classList.add('row-suspended');
+
+    const pidText = escapeHtml(String(proc.pid ?? ''));
+    const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
+
+    let actionsHtml = '';
+    if (proc.isSystem) {
+      actionsHtml = `<span class="badge badge-system-lock">🔒 מוגן מערכת</span>`;
+    } else {
+      const killTitle = isReadOnlyMode 
+        ? 'שרת מנהל הפורטים נמצא במצב "קריאה בלבד". שנה את מצב הבטיחות בהגדרות כדי לאפשר סגירה.'
+        : `סגור תהליך PID ${proc.pid} — דורש הקלדת אישור.`;
+        
+      const pauseResumeBtn = proc.isSuspended
+        ? `<button class="action-btn btn-success btn-sm btn-resume-proc" title="המשך פעילות תהליך ${pidText}">▶️ המשך</button>`
+        : `<button class="action-btn btn-warning btn-sm btn-pause-proc" title="השהה פעילות תהליך ${pidText}">⏸️ השהה</button>`;
+
+      actionsHtml = `
+        <div class="action-btn-group">
+          ${pauseResumeBtn}
+          <button class="action-btn btn-danger btn-sm btn-kill-proc" ${isReadOnlyMode ? 'disabled aria-disabled="true"' : ''} title="${escapeHtml(killTitle)}">❌ סגור</button>
+        </div>
+      `;
+    }
+
+    const processIcon = getProcessIcon(proc.processName);
+    const cmdClean = (proc.commandLine || '').replace(/\n/g, ' ');
+
+    tr.innerHTML = `
+      <td>-</td>
+      <td>
+        <div class="process-name-cell">
+          <span class="process-icon">${processIcon}</span>
+          <span class="process-title" dir="ltr" style="text-align: right; display: inline-block;"><strong>${escapeHtml(proc.processName)}</strong></span>
+        </div>
+      </td>
+      <td class="font-mono" dir="ltr">${pidText}</td>
+      <td>${escapeHtml(proc.user)}</td>
+      <td>-</td>
+      <td>
+        ${proc.isSuspended ? '<span class="badge-suspended">מושהה (Suspended)</span>' : 'פעיל (Running)'}
+      </td>
+      <td>
+        ${proc.cpu}% CPU / ${proc.memoryMb} MB
+      </td>
+      <td class="text-right">
+        ${actionsHtml}
+      </td>
+    `;
+
+    // Hook up buttons
+    if (!proc.isSystem) {
+      const resumeBtn = tr.querySelector('.btn-resume-proc');
+      if (resumeBtn) {
+        resumeBtn.addEventListener('click', () => resumeSystemProcess(proc.pid));
+      }
+      
+      const pauseBtn = tr.querySelector('.btn-pause-proc');
+      if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => suspendSystemProcess(proc.pid));
+      }
+
+      const killBtn = tr.querySelector('.btn-kill-proc');
+      if (killBtn && !isReadOnlyMode) {
+        killBtn.addEventListener('click', () => {
+          openConfirmModal('kill', {
+            pid: proc.pid,
+            processName: proc.processName,
+            commandLine: proc.commandLine || proc.processName,
+            port: '-'
+          });
+        });
+      }
+    }
+
+    elements.tableBody.appendChild(tr);
+  });
+}
+
 // --- RENDERING ---
 function renderTable() {
+  if (activeFilter === 'system-resources') {
+    return renderSystemProcessesTable();
+  }
   elements.tableBody.innerHTML = '';
 
   if (filteredPorts.length === 0) {
@@ -491,7 +741,7 @@ function openConfirmModal(action, portObj) {
   stopPolling();
   
   // Clean elements
-  elements.previewPort.textContent = portObj.port;
+  elements.previewPort.textContent = portObj.port !== undefined ? portObj.port : '-';
   elements.previewProcess.textContent = portObj.processName;
   elements.previewPid.textContent = portObj.pid;
   elements.previewCommand.textContent = portObj.commandLine;
@@ -503,7 +753,8 @@ function openConfirmModal(action, portObj) {
 
   if (action === 'kill') {
     elements.modalTitle.textContent = 'אישור סגירת תוכנה ותהליך';
-    elements.modalDesc.innerHTML = `פעולה זו תשלח אות כיבוי (<code>SIGTERM</code>) למזהה תהליך (PID) <strong>${portObj.pid}</strong> בפורט <strong>${portObj.port}</strong>. סגור את התוכנה רק אם אתה בטוח שהיא אינה חיונית לפעילותך.`;
+    const portDesc = portObj.port && portObj.port !== '-' ? ` בפורט <strong>${portObj.port}</strong>` : '';
+    elements.modalDesc.innerHTML = `פעולה זו תשלח אות כיבוי (<code>SIGTERM</code>) למזהה תהליך (PID) <strong>${portObj.pid}</strong>${portDesc}. סגור את התוכנה רק אם אתה בטוח שהיא אינה חיונית לפעילותך.`;
     elements.modalConfirmBtn.textContent = 'סגור תוכנה (Terminate)';
     elements.modalConfirmBtn.className = 'btn btn-danger';
     elements.modalConfirmBtn.disabled = true;
@@ -519,7 +770,11 @@ function openConfirmModal(action, portObj) {
       resetDestructiveConfirmation();
       
       if (success) {
-        fetchPorts();
+        if (activeFilter === 'system-resources') {
+          fetchSystemProcesses();
+        } else {
+          fetchPorts();
+        }
       } else {
         startPolling();
       }
@@ -595,20 +850,190 @@ function openDetailsModal(portObj) {
 // --- CALL TO BACKEND APIs ---
 async function executeKill(pid, port) {
   try {
-    const res = await fetch('/api/ports/kill', {
+    const isSystemKill = port === undefined || port === null || port === '-' || activeFilter === 'system-resources';
+    const url = isSystemKill ? '/api/system/kill' : '/api/ports/kill';
+    const body = isSystemKill ? { pid, confirm: true } : { pid, port, confirm: true };
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pid, port, confirm: true })
+      body: JSON.stringify(body)
     });
     
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || data.error || 'שגיאה בסגירת התהליך בשרת');
     
-    showToast(`תהליך ${pid} בפורט ${port} נסגר בהצלחה!`, 'success');
+    const msg = isSystemKill ? `תהליך ${pid} נסגר בהצלחה!` : `תהליך ${pid} בפורט ${port} נסגר בהצלחה!`;
+    showToast(msg, 'success');
     return true;
   } catch (err) {
     showToast(err.message, 'error');
     return false;
+  }
+}
+
+async function updateSystemUsage() {
+  try {
+    const res = await fetch('/api/system/usage');
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    // Update metric display
+    if (elements.metricCpuUsage) {
+      elements.metricCpuUsage.textContent = `${data.cpu}%`;
+    }
+    if (elements.cpuBar) {
+      elements.cpuBar.style.width = `${data.cpu}%`;
+      elements.cpuBar.style.backgroundColor = data.cpu > 80 ? '#ff4b4b' : data.cpu > 50 ? '#ffc107' : '#00e676';
+    }
+    
+    if (elements.metricMemoryUsage) {
+      const usedGb = (data.memory.usedBytes / (1024 ** 3)).toFixed(2);
+      const totalGb = (data.memory.totalBytes / (1024 ** 3)).toFixed(2);
+      elements.metricMemoryUsage.textContent = `${usedGb} GB / ${totalGb} GB`;
+    }
+    
+    if (elements.memoryBar) {
+      elements.memoryBar.style.width = `${data.memory.percentage}%`;
+      elements.memoryBar.style.backgroundColor = data.memory.percentage > 85 ? '#ff4b4b' : data.memory.percentage > 70 ? '#ffc107' : '#00e676';
+    }
+
+    // Check if banner should be displayed
+    if (data.cpu > 70 || data.memory.percentage > 80) {
+      await renderWarningBanner();
+    } else {
+      if (elements.warningBanner) {
+        elements.warningBanner.classList.add('hidden');
+      }
+    }
+  } catch (err) {
+    console.error('Failed to update system metrics:', err);
+  }
+}
+
+async function renderWarningBanner() {
+  // If a modal is open, skip updating the banner to prevent user interruption
+  if (!elements.confirmModal.classList.contains('hidden') || !elements.detailsModal.classList.contains('hidden')) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/system/processes');
+    if (!res.ok) return;
+    const { processes } = await res.json();
+    
+    // Find top 1-2 non-system user processes
+    const heavyProcs = processes
+      .filter(p => !p.isSystem && !p.isSuspended)
+      .slice(0, 2);
+      
+    if (heavyProcs.length === 0) {
+      if (elements.warningBanner) {
+        elements.warningBanner.classList.add('hidden');
+      }
+      return;
+    }
+    
+    if (elements.warningBanner) {
+      elements.warningBanner.classList.remove('hidden');
+    }
+    
+    if (elements.warningSuggestions) {
+      elements.warningSuggestions.innerHTML = '';
+      heavyProcs.forEach(proc => {
+        const card = document.createElement('div');
+        card.className = 'suggestion-card';
+        
+        card.innerHTML = `
+          <div class="suggestion-info">
+            <h4 style="margin: 0; font-size: 0.95rem;">${escapeHtml(proc.processName)} (PID: ${proc.pid})</h4>
+            <p style="margin: 4px 0 0 0; font-size: 0.8rem; color: #aaa;">${proc.cpu}% CPU / ${proc.memoryMb} MB</p>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-sm btn-warning btn-pause-suggest" data-pid="${proc.pid}">⏸️ השהה</button>
+            <button class="btn btn-sm btn-danger btn-kill-suggest" data-pid="${proc.pid}">❌ סגור</button>
+          </div>
+        `;
+        
+        // Hook up buttons
+        card.querySelector('.btn-pause-suggest').addEventListener('click', () => {
+          suspendSystemProcess(proc.pid);
+        });
+        card.querySelector('.btn-kill-suggest').addEventListener('click', () => {
+          openConfirmModal('kill', {
+            pid: proc.pid,
+            processName: proc.processName,
+            commandLine: proc.commandLine || proc.processName,
+            port: '-'
+          });
+        });
+        
+        elements.warningSuggestions.appendChild(card);
+      });
+    }
+    
+    if (elements.quickCleanBtn) {
+      elements.quickCleanBtn.onclick = async () => {
+        const confirmMessage = `האם אתה בטוח שברצונך לסגור את כל (${heavyProcs.length}) התהליכים הכבדים שזוהו?\n` + 
+          heavyProcs.map(p => `- ${p.processName} (PID: ${p.pid})`).join('\n');
+        if (confirm(confirmMessage)) {
+          for (const proc of heavyProcs) {
+            await executeKill(proc.pid, '-');
+          }
+          showToast('בוצעה אופטימיזציה מהירה לתהליכים הכבדים.', 'success');
+          updateSystemUsage();
+          if (activeFilter === 'system-resources') {
+            fetchSystemProcesses();
+          } else {
+            fetchPorts();
+          }
+        }
+      };
+    }
+  } catch (err) {
+    console.error('Error rendering warning banner:', err);
+  }
+}
+
+async function suspendSystemProcess(pid) {
+  try {
+    const res = await fetch('/api/system/suspend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pid })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'שגיאה בהשהיית התהליך');
+    showToast(`תהליך ${pid} מושהה בהצלחה`, 'success');
+    updateSystemUsage();
+    if (activeFilter === 'system-resources') {
+      fetchSystemProcesses();
+    } else {
+      fetchPorts();
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function resumeSystemProcess(pid) {
+  try {
+    const res = await fetch('/api/system/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pid })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'שגיאה בחידוש התהליך');
+    showToast(`פעילות תהליך ${pid} חודשה בהצלחה`, 'success');
+    updateSystemUsage();
+    if (activeFilter === 'system-resources') {
+      fetchSystemProcesses();
+    } else {
+      fetchPorts();
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
   }
 }
 

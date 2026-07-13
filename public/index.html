@@ -116,6 +116,37 @@
           <p id="metric-system-count" class="metric-value">--</p>
         </div>
       </div>
+      <div class="metric-card glass">
+        <div class="metric-icon system-icon">🖥️</div>
+        <div class="metric-content">
+          <h3>עומס מעבד (CPU)</h3>
+          <p id="metric-cpu-usage" class="metric-value">--%</p>
+          <div class="progress-bar-container"><div id="cpu-bar" class="progress-bar" style="width: 0%"></div></div>
+        </div>
+      </div>
+      <div class="metric-card glass">
+        <div class="metric-icon dev-icon">🧠</div>
+        <div class="metric-content">
+          <h3>ניצול זיכרון</h3>
+          <p id="metric-memory-usage" class="metric-value">-- GB</p>
+          <div class="progress-bar-container"><div id="memory-bar" class="progress-bar" style="width: 0%"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dynamic Warning Banner -->
+    <section id="warning-banner" class="warning-banner glass hidden" style="margin-bottom: 20px;">
+      <div class="warning-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="warning-icon" style="font-size: 24px;">⚠️</span>
+          <div class="warning-title">
+            <h3 style="margin: 0; color: #ff4b4b; font-size: 1.1rem;">זוהה עומס כבד במערכת</h3>
+            <p id="warning-message" style="margin: 4px 0 0 0; font-size: 0.9rem; color: #aaa;">המחשב פועל בטמפרטורה גבוהה. מומלץ לסגור או להשהות את התהליכים הבאים:</p>
+          </div>
+        </div>
+        <button id="quick-clean-btn" class="btn btn-danger" style="padding: 8px 16px; border-radius: 6px;">🗑️ אופטימיזציה מהירה</button>
+      </div>
+      <div id="warning-suggestions" class="warning-suggestions"></div>
     </section>
 
     <!-- Controller Controls -->
@@ -132,6 +163,7 @@
         <button class="filter-tab active" data-filter="all">כל הפורטים</button>
         <button class="filter-tab" data-filter="user">פורטי משתמש</button>
         <button class="filter-tab" data-filter="system">פורטי מערכת</button>
+        <button class="filter-tab" data-filter="system-resources">כל התהליכים במערכת</button>
       </div>
     </section>
 
