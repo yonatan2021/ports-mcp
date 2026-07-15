@@ -1,6 +1,6 @@
 {
   "name": "ports-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Yonatan",
   "description": "Local-only macOS port manager with a guarded MCP stdio server and optional web UI.",
   "main": "desktop/main.js",
@@ -46,6 +46,7 @@
   "build": {
     "appId": "com.yonatan2021.portsmcp",
     "productName": "Port Manager",
+    "artifactName": "Port-Manager-${version}-${arch}.${ext}",
     "icon": "build/icon.icns",
     "files": [
       "desktop/**/*",

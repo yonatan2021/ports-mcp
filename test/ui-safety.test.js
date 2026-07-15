@@ -21,6 +21,18 @@ test('UI has RTL support with lang=he and dir=rtl', () => {
   assert.match(indexHtml, /dir="rtl"/);
 });
 
+test('UI shows app version, update availability, and Bersaglio copyright', () => {
+  assert.match(indexHtml, /id="current-version"/);
+  assert.match(indexHtml, /id="update-status"/);
+  assert.match(indexHtml, /id="update-button"/);
+  assert.match(indexHtml, /Bersaglio/);
+  assert.match(appJs, /fetch\('\/api\/app-info'/);
+  assert.match(appJs, /fetch\('\/api\/app-update'/);
+  assert.match(appJs, /X-Update-Token/);
+  assert.match(styleCss, /\.app-footer/);
+  assert.match(styleCss, /\.update-status\.available/);
+});
+
 test('kill confirmation requires explicit PID entry before enabling destructive action', () => {
   assert.match(indexHtml, /id="confirm-pid-input"/);
   assert.match(indexHtml, /id="confirm-understand-checkbox"/);

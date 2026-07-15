@@ -1866,6 +1866,7 @@ body {
 .controls-panel { order: 4; }
 .ports-container { order: 5; }
 .education-widget { order: 6; }
+.app-footer { order: 7; }
 
 .glass,
 .glass:hover {
@@ -2015,6 +2016,38 @@ html[dir="rtl"] .settings-panel.open {
 .education-item { background: #0e151b; }
 .warning-banner { backdrop-filter: none; }
 
+.app-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .35rem .25rem 0;
+  color: var(--text-muted);
+  font-size: .78rem;
+}
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+}
+.update-status {
+  padding-inline-start: .65rem;
+  border-inline-start: 1px solid var(--border-color);
+}
+.update-status.available { color: var(--color-warning); }
+.update-button {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.update-button:hover { text-decoration: underline; }
+.update-button:disabled { opacity: .65; cursor: wait; text-decoration: none; }
+
 @media (max-width: 980px) {
   .metrics-grid { grid-template-columns: repeat(3, 1fr); }
   .metrics-grid .metric-health:last-child { grid-column: span 2; }
@@ -2057,6 +2090,8 @@ html[dir="rtl"] .settings-panel.open {
   .action-btn { min-width: 66px; height: 32px; padding: 0 .45rem; }
   .btn-kill-action:disabled { display: none; }
   .education-grid { grid-template-columns: 1fr; }
+  .app-footer, .version-info { align-items: flex-start; flex-direction: column; gap: .35rem; }
+  .update-status { padding-inline-start: 0; border-inline-start: 0; }
   .toast-container { left: .75rem !important; right: .75rem !important; bottom: .75rem; }
   .toast { min-width: 0; width: 100%; }
 }

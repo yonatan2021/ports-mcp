@@ -1,0 +1,59 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-macos:
+    name: Build and publish macOS update
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node -e "const expected=process.env.RELEASE_TAG.replace(/^v/, ''); const actual=require('./package.json').version; if(actual!==expected){throw new Error('Tag '+expected+' does not match package version '+actual)}"
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build arm64 and Intel artifacts
+        run: npm run package:mac -- --arm64 --x64
+
+      - name: Verify update archives
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          unzip -t "dist/Port-Manager-${VERSION}-arm64.zip"
+          unzip -t "dist/Port-Manager-${VERSION}-x64.zip"
+          codesign --verify --deep --strict "dist/mac-arm64/Port Manager.app"
+          codesign --verify --deep --strict "dist/mac/Port Manager.app"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/Port-Manager-${VERSION}-arm64.zip" \
+            "dist/Port-Manager-${VERSION}-arm64.dmg" \
+            "dist/Port-Manager-${VERSION}-x64.zip" \
+            "dist/Port-Manager-${VERSION}-x64.dmg" \
+            --title "Port Manager ${VERSION}" \
+            --generate-notes

@@ -9,6 +9,9 @@ let currentSort = { column: 'port', order: 'asc' };
 let pollIntervalId = null;
 let systemUsageIntervalId = null;
 let destructiveActionContext = null;
+let appUpdateToken = null;
+let appUpdateReleaseUrl = null;
+let appUpdateSupported = false;
 const POLL_INTERVAL = 8000; // 8 seconds
 const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
 
@@ -89,6 +92,12 @@ const elements = {
   memoryBar: document.getElementById('memory-bar'),
   resultsCount: document.getElementById('results-count'),
   currentViewTitle: document.getElementById('current-view-title'),
+
+  // App information
+  currentVersion: document.getElementById('current-version'),
+  updateStatus: document.getElementById('update-status'),
+  updateButton: document.getElementById('update-button'),
+  copyrightYear: document.getElementById('copyright-year'),
   
   // Warning Banner
   warningBanner: document.getElementById('warning-banner'),
@@ -128,13 +137,74 @@ const elements = {
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
+  fetchAppInfo();
   fetchPorts();
   startPolling();
   updateSystemUsage();
   startSystemUsagePolling();
 });
 
+async function fetchAppInfo() {
+  if (elements.copyrightYear) {
+    elements.copyrightYear.textContent = String(new Date().getFullYear());
+  }
+
+  try {
+    const response = await fetch('/api/app-info');
+    if (!response.ok) throw new Error('App info unavailable');
+    const info = await response.json();
+    elements.currentVersion.textContent = info.currentVersion || '—';
+    appUpdateToken = typeof info.updateToken === 'string' ? info.updateToken : null;
+    appUpdateReleaseUrl = typeof info.releaseUrl === 'string' ? info.releaseUrl : null;
+    appUpdateSupported = info.updateSupported === true && Boolean(appUpdateToken);
+
+    if (info.updateAvailable) {
+      elements.updateStatus.textContent = `עדכון זמין: גרסה ${info.latestVersion}`;
+      elements.updateStatus.classList.add('available');
+      elements.updateButton.textContent = appUpdateSupported ? 'עדכן עכשיו' : 'פתח דף הורדה';
+      elements.updateButton.classList.remove('hidden');
+      return;
+    }
+
+    elements.updateStatus.textContent = info.latestVersion ? 'הגרסה מעודכנת' : 'לא ניתן לבדוק עדכונים כרגע';
+  } catch (_error) {
+    elements.updateStatus.textContent = 'לא ניתן לבדוק עדכונים כרגע';
+  }
+}
+
+async function applyAppUpdate() {
+  if (!appUpdateSupported) {
+    if (appUpdateReleaseUrl) window.open(appUpdateReleaseUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  elements.updateButton.disabled = true;
+  elements.updateButton.textContent = 'מעדכן…';
+  elements.updateStatus.textContent = 'מוריד ומאמת את העדכון…';
+
+  try {
+    const response = await fetch('/api/app-update', {
+      method: 'POST',
+      headers: { 'X-Update-Token': appUpdateToken },
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || 'Update failed');
+
+    elements.updateStatus.textContent = 'העדכון אומת — מפעיל מחדש…';
+    elements.updateButton.classList.add('hidden');
+  } catch (error) {
+    console.error('Could not apply app update:', error);
+    elements.updateStatus.textContent = 'העדכון נכשל — אפשר לנסות שוב';
+    elements.updateStatus.classList.add('available');
+    elements.updateButton.disabled = false;
+    elements.updateButton.textContent = 'נסה שוב';
+    showToast(`העדכון נכשל: ${error.message}`, 'error');
+  }
+}
+
 function setupEventListeners() {
+  elements.updateButton.addEventListener('click', applyAppUpdate);
+
   // Refresh button
   elements.refreshBtn.addEventListener('click', () => {
     fetchPorts();

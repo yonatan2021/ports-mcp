@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const { createPortService, PortManagerError } = require('./port-service');
 
@@ -33,7 +34,15 @@ function sendError(res, error) {
   res.status(status).json(errorToBody(error));
 }
 
-function createApp({ service = createPortService(), staticDir = path.join(__dirname, '..', 'public'), safetyLayer = null, config = null } = {}) {
+function createApp({
+  service = createPortService(),
+  staticDir = path.join(__dirname, '..', 'public'),
+  safetyLayer = null,
+  config = null,
+  getAppInfo = null,
+  applyAppUpdate = null,
+  updateToken = null,
+} = {}) {
   const app = express();
 
   // ─── Security Headers ───────────────────────────────────────────
@@ -56,6 +65,46 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
   });
 
   // ─── API Routes ─────────────────────────────────────────────────
+
+  app.get('/api/app-info', async (_req, res) => {
+    if (!getAppInfo) {
+      return res.status(501).json({ error: { code: 'APP_INFO_UNAVAILABLE', message: 'App information is not configured', details: {} } });
+    }
+    try {
+      res.json(await getAppInfo());
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/app-update', async (req, res) => {
+    // Release archives are large; keep the normal 30-second API timeout from
+    // aborting a valid update on slower connections.
+    req.setTimeout(0);
+    res.setTimeout(0);
+    if (!applyAppUpdate || !updateToken) {
+      return res.status(501).json({ error: { code: 'APP_UPDATE_UNAVAILABLE', message: 'In-app update is not available', details: {} } });
+    }
+    const suppliedToken = req.get('X-Update-Token') || '';
+    const expected = Buffer.from(updateToken);
+    const supplied = Buffer.from(suppliedToken);
+    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+      return res.status(403).json({ error: { code: 'UPDATE_TOKEN_INVALID', message: 'Update authorization failed', details: {} } });
+    }
+
+    try {
+      res.json(await applyAppUpdate());
+    } catch (error) {
+      console.error('App update failed:', error);
+      res.status(500).json({
+        error: {
+          code: 'UPDATE_FAILED',
+          message: error instanceof Error ? error.message : 'App update failed',
+          details: {},
+        },
+      });
+    }
+  });
 
   app.get('/api/ports', async (_req, res) => {
     try {

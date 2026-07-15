@@ -1,10 +1,13 @@
 const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const crypto = require('node:crypto');
 const { createApp } = require('../src/http-server');
 const { SafetyConfig } = require('../src/config');
 const { SafetyLayer } = require('../src/safety');
 const { createPortService } = require('../src/port-service');
 const { startLocalServer } = require('../src/desktop-server');
 const { updateFromGitHubMain } = require('../src/github-main-updater');
+const { createAppInfoProvider } = require('../src/app-info');
+const { createMacAppUpdater, resolveRunningAppBundle } = require('../src/app-updater');
 
 let mainWindow;
 let localServer;
@@ -99,7 +102,9 @@ function createApplicationMenu() {
         { role: 'hideOthers', label: 'הסתר אחרים' },
         { role: 'unhide', label: 'הצג הכל' },
         { type: 'separator' },
-        { label: 'עדכון מ-GitHub main…', click: updateFromMain },
+        app.isPackaged
+          ? { label: 'בדוק עדכונים…', click: () => mainWindow?.reload() }
+          : { label: 'עדכון מ-GitHub main…', click: updateFromMain },
         { type: 'separator' },
         { role: 'quit', label: 'סגור מנהל הפורטים' },
       ],
@@ -122,8 +127,33 @@ app.whenReady().then(async () => {
   const config = new SafetyConfig();
   const safetyLayer = new SafetyLayer({ config });
   const service = createPortService({ safetyLayer });
+  const targetApp = process.platform === 'darwin' && app.isPackaged
+    ? resolveRunningAppBundle(process.execPath)
+    : null;
+  const updater = targetApp
+    ? createMacAppUpdater({
+        currentVersion: app.getVersion(),
+        arch: process.arch,
+        targetApp,
+        tempDir: app.getPath('temp'),
+      })
+    : null;
+  const updateToken = updater ? crypto.randomBytes(32).toString('hex') : null;
+  const getBaseAppInfo = createAppInfoProvider({ currentVersion: app.getVersion() });
+  const getAppInfo = async () => ({
+    ...(await getBaseAppInfo()),
+    updateSupported: Boolean(updater),
+    updateToken,
+  });
+  const applyAppUpdate = updater
+    ? async () => {
+        const result = await updater.apply();
+        if (result.handedOff) setTimeout(() => app.quit(), 750);
+        return result;
+      }
+    : null;
   localServer = await startLocalServer({
-    app: createApp({ service, safetyLayer, config }),
+    app: createApp({ service, safetyLayer, config, getAppInfo, applyAppUpdate, updateToken }),
   });
 
   createApplicationMenu();

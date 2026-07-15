@@ -3,6 +3,8 @@ const { createApp, SERVER_TIMEOUT_MS, HEADERS_TIMEOUT_MS } = require('./src/http
 const { SafetyConfig } = require('./src/config');
 const { SafetyLayer } = require('./src/safety');
 const { createPortService } = require('./src/port-service');
+const { createAppInfoProvider } = require('./src/app-info');
+const packageJson = require('./package.json');
 
 const PORT = Number.parseInt(process.env.PORT || '9999', 10);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -15,7 +17,8 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
 const config = new SafetyConfig();
 const safetyLayer = new SafetyLayer({ config });
 const service = createPortService({ safetyLayer });
-const app = createApp({ service, safetyLayer, config });
+const getAppInfo = createAppInfoProvider({ currentVersion: packageJson.version });
+const app = createApp({ service, safetyLayer, config, getAppInfo });
 const server = http.createServer(app);
 
 server.timeout = SERVER_TIMEOUT_MS;
