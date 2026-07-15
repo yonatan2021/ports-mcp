@@ -174,6 +174,29 @@ test('getSystemUsage returns CPU and memory statistics', async () => {
   assert.ok(usage.memory.totalBytes > 0);
 });
 
+test('getSystemUsage uses macOS memory pressure instead of raw free memory', async () => {
+  const calls = [];
+  const runner = {
+    execFile: async (file, args) => {
+      calls.push([file, args]);
+      assert.equal(file, 'memory_pressure');
+      assert.deepEqual(args, ['-Q']);
+      return {
+        stdout: 'The system has 17179869184 (1048576 pages with a page size of 16384).\nSystem-wide memory free percentage: 58%\n',
+        stderr: '',
+        exitCode: 0,
+      };
+    }
+  };
+  const service = createPortService({ runner });
+
+  const usage = await service.getSystemUsage();
+
+  assert.equal(usage.memory.percentage, 42);
+  assert.equal(usage.memory.usedBytes, Math.round(usage.memory.totalBytes * 0.42));
+  assert.deepEqual(calls, [['memory_pressure', ['-Q']]]);
+});
+
 test('getSystemProcesses parses ps output correctly', async () => {
   const psStdout = ` %CPU   RSS STAT   PID USER COMM
  12.5 1048576 S   1234 yoni /Applications/Google Chrome.app/Contents/MacOS/Google Chrome

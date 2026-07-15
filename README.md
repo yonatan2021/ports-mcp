@@ -8,6 +8,9 @@ macOS **only** — uses `lsof` and `ps`, which are macOS-specific.
 
 Local-only MCP server and optional web UI for inspecting macOS listening TCP ports.
 
+Also available as a native macOS desktop app. The app runs its API only on a private
+`127.0.0.1` port and opens the existing local UI in an isolated Electron window.
+
 The priority entrypoint is the stdio MCP server for AI agents. The existing browser UI remains available for local manual use.
 
 > Security posture: safe by default. Listing ports is read-only. Killing a process is guarded and dry-runs unless `confirm=true`. Restart is intentionally disabled until there is an explicit allowlist; the old arbitrary `shell:true` restart path was removed.
@@ -72,6 +75,37 @@ Override if needed:
 ```bash
 HOST=127.0.0.1 PORT=8888 npm start
 ```
+
+## Run the macOS app
+
+```bash
+npm run desktop
+```
+
+The desktop app does not need a manually started web server. It creates an ephemeral
+loopback-only server, opens the UI, and closes it when the app quits.
+
+## Package a macOS app
+
+```bash
+npm run package:mac
+```
+
+Artifacts are written to `dist/` as a `.dmg` and `.zip` for the current Mac
+architecture. Local builds are unsigned; distribute outside your Mac only after
+Apple Developer signing and notarization.
+
+### Update from GitHub `main`
+
+When running the app from a Git checkout (`npm run desktop`), choose
+**מנהל הפורטים → עדכון מ-GitHub main…**. The app only fast-forwards a clean
+`main` checkout whose `origin` is this repository, then restarts. It refuses
+local changes, a different branch, or a different origin.
+
+Packaged `.app`/`.dmg` builds cannot update from Git: they do not contain the
+repository's `.git` metadata. For installed builds, publish and download a new
+signed/notarized release. A full automatic updater should use GitHub Releases,
+not an arbitrary moving branch.
 
 ## HTTP API
 

@@ -246,9 +246,22 @@ function createPortService(options = {}) {
 
   async function getSystemUsage() {
     const totalBytes = os.totalmem();
-    const freeBytes = os.freemem();
-    const usedBytes = totalBytes - freeBytes;
-    const memoryPercentage = parseFloat(((usedBytes / totalBytes) * 100).toFixed(1));
+    let usedBytes = totalBytes - os.freemem();
+    let memoryPercentage = parseFloat(((usedBytes / totalBytes) * 100).toFixed(1));
+
+    try {
+      const { stdout } = await runner.execFile('memory_pressure', ['-Q'], { allowNonZero: true });
+      const freePercentageMatch = stdout.match(/System-wide memory free percentage:\s*(\d+(?:\.\d+)?)%/i);
+      if (freePercentageMatch) {
+        const freePercentage = Number(freePercentageMatch[1]);
+        if (freePercentage >= 0 && freePercentage <= 100) {
+          memoryPercentage = parseFloat((100 - freePercentage).toFixed(1));
+          usedBytes = Math.round(totalBytes * (memoryPercentage / 100));
+        }
+      }
+    } catch {
+      // Non-macOS fallback: report process-visible free memory.
+    }
 
     // Dynamic CPU calculation by sampling os.cpus()
     const cpus1 = os.cpus();

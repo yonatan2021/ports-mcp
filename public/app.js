@@ -82,8 +82,10 @@ const elements = {
   
   // Metrics CPU/Memory
   metricCpuUsage: document.getElementById('metric-cpu-usage'),
+  metricCpuDetail: document.getElementById('metric-cpu-detail'),
   cpuBar: document.getElementById('cpu-bar'),
   metricMemoryUsage: document.getElementById('metric-memory-usage'),
+  metricMemoryDetail: document.getElementById('metric-memory-detail'),
   memoryBar: document.getElementById('memory-bar'),
   
   // Warning Banner
@@ -882,6 +884,9 @@ async function updateSystemUsage() {
     if (elements.metricCpuUsage) {
       elements.metricCpuUsage.textContent = `${data.cpu}%`;
     }
+    if (elements.metricCpuDetail) {
+      elements.metricCpuDetail.textContent = getUsageLabel(data.cpu, 'CPU');
+    }
     if (elements.cpuBar) {
       elements.cpuBar.style.width = `${data.cpu}%`;
       elements.cpuBar.style.backgroundColor = data.cpu > 80 ? '#ff4b4b' : data.cpu > 50 ? '#ffc107' : '#00e676';
@@ -892,6 +897,9 @@ async function updateSystemUsage() {
       const totalGb = (data.memory.totalBytes / (1024 ** 3)).toFixed(2);
       elements.metricMemoryUsage.textContent = `${usedGb} GB / ${totalGb} GB`;
     }
+    if (elements.metricMemoryDetail) {
+      elements.metricMemoryDetail.textContent = `${data.memory.percentage}% בשימוש — ${getUsageLabel(data.memory.percentage, 'זיכרון')}`;
+    }
     
     if (elements.memoryBar) {
       elements.memoryBar.style.width = `${data.memory.percentage}%`;
@@ -900,7 +908,7 @@ async function updateSystemUsage() {
 
     // Check if banner should be displayed
     if (data.cpu > 70 || data.memory.percentage > 80) {
-      await renderWarningBanner();
+      await renderWarningBanner(data);
     } else {
       if (elements.warningBanner) {
         elements.warningBanner.classList.add('hidden');
@@ -911,7 +919,7 @@ async function updateSystemUsage() {
   }
 }
 
-async function renderWarningBanner() {
+async function renderWarningBanner(usage) {
   // If a modal is open, skip updating the banner to prevent user interruption
   if (!elements.confirmModal.classList.contains('hidden') || !elements.detailsModal.classList.contains('hidden')) {
     return;
@@ -936,6 +944,13 @@ async function renderWarningBanner() {
     
     if (elements.warningBanner) {
       elements.warningBanner.classList.remove('hidden');
+    }
+
+    if (elements.warningMessage) {
+      const overloaded = [];
+      if (usage.cpu > 70) overloaded.push(`CPU ${usage.cpu}%`);
+      if (usage.memory.percentage > 80) overloaded.push(`זיכרון ${usage.memory.percentage}%`);
+      elements.warningMessage.textContent = `עומס גבוה: ${overloaded.join(' · ')}. בדוק את התהליכים הבאים לפני סגירה או השהיה.`;
     }
     
     if (elements.warningSuggestions) {
@@ -1049,6 +1064,13 @@ function escapeHtml(str) {
 
 function safeClassName(str) {
   return String(str || 'unknown').toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+}
+
+function getUsageLabel(percentage, resource) {
+  if (percentage > 85) return `${resource}: עומס חריג`;
+  if (percentage > 70) return `${resource}: עומס גבוה`;
+  if (percentage > 50) return `${resource}: עומס בינוני`;
+  return `${resource}: תקין`;
 }
 
 function getProcessIcon(processName) {

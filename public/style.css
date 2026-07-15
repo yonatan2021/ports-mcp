@@ -288,7 +288,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Metrics Grid */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 1.25rem;
 }
 
@@ -325,6 +325,13 @@ h1, h2, h3, h4, h5, h6 {
   color: #fff;
   margin-top: 0.25rem;
   line-height: 1.1;
+}
+
+.metric-detail {
+  min-height: 1.25rem;
+  margin-top: 0.4rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
 }
 
 /* Control Panel */
