@@ -558,7 +558,6 @@ function renderSystemProcessesTable() {
     }
 
     const processIcon = getProcessIcon(proc.processName);
-    const cmdClean = (proc.commandLine || '').replace(/\n/g, ' ');
 
     tr.innerHTML = `
       <td>-</td>
