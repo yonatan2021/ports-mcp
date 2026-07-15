@@ -162,12 +162,10 @@ test('listPorts enriches results with isSystem', async () => {
   const ports = await service.listPorts();
   assert.equal(ports[0].isSystem, false);
   assert.equal(ports[1].isSystem, true);
-});
+  });
 
-const os = require('node:os');
-
-test('getSystemUsage returns CPU and memory statistics', async () => {
-  const service = createPortService();
+  test('getSystemUsage returns CPU and memory statistics', async () => {
+    const service = createPortService();
   const usage = await service.getSystemUsage();
   assert.ok(typeof usage.cpu === 'number');
   assert.ok(typeof usage.memory.percentage === 'number');
