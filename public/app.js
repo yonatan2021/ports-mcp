@@ -87,6 +87,8 @@ const elements = {
   metricMemoryUsage: document.getElementById('metric-memory-usage'),
   metricMemoryDetail: document.getElementById('metric-memory-detail'),
   memoryBar: document.getElementById('memory-bar'),
+  resultsCount: document.getElementById('results-count'),
+  currentViewTitle: document.getElementById('current-view-title'),
   
   // Warning Banner
   warningBanner: document.getElementById('warning-banner'),
@@ -397,7 +399,7 @@ function updateTableHeaders() {
     headers[0].innerHTML = 'פורט <span class="sort-indicator">▲</span>';
     headers[0].classList.add('sortable');
     headers[4].innerHTML = 'פרוטוקול / סוג';
-    headers[5].innerHTML = 'שימוש ותפקיד הפורט';
+    headers[5].innerHTML = 'למה הוא פתוח?';
     headers[6].innerHTML = 'פקודת הפעלה';
     
     // Restore sort indicators
@@ -427,6 +429,7 @@ function applyFilters() {
       }
       return true;
     });
+    updateResultsSummary(filteredProcesses.length);
     
     sortAndRender();
     return;
@@ -462,7 +465,24 @@ function applyFilters() {
   filteredPorts = deduplicatePorts(filteredPorts);
 
   updateMetrics();
+  updateResultsSummary(filteredPorts.length);
   sortAndRender();
+}
+
+function updateResultsSummary(count) {
+  const viewLabels = {
+    all: 'מה פתוח עכשיו',
+    user: 'האפליקציות שלי',
+    system: 'שירותי macOS',
+    'system-resources': 'כל התהליכים במחשב'
+  };
+  if (elements.currentViewTitle) {
+    elements.currentViewTitle.textContent = viewLabels[activeFilter] || viewLabels.all;
+  }
+  if (elements.resultsCount) {
+    const suffix = activeFilter === 'system-resources' ? 'תהליכים' : 'חיבורים';
+    elements.resultsCount.textContent = `${count} ${suffix} מוצגים`;
+  }
 }
 
 function updateMetrics() {
@@ -539,20 +559,20 @@ function renderSystemProcessesTable() {
 
     let actionsHtml = '';
     if (proc.isSystem) {
-      actionsHtml = `<span class="badge badge-system-lock">🔒 מוגן מערכת</span>`;
+      actionsHtml = `<span class="badge badge-system-lock">מוגן מערכת</span>`;
     } else {
       const killTitle = isReadOnlyMode 
         ? 'שרת מנהל הפורטים נמצא במצב "קריאה בלבד". שנה את מצב הבטיחות בהגדרות כדי לאפשר סגירה.'
         : `סגור תהליך PID ${proc.pid} — דורש הקלדת אישור.`;
         
       const pauseResumeBtn = proc.isSuspended
-        ? `<button class="action-btn btn-success btn-sm btn-resume-proc" title="המשך פעילות תהליך ${pidText}">▶️ המשך</button>`
-        : `<button class="action-btn btn-warning btn-sm btn-pause-proc" title="השהה פעילות תהליך ${pidText}">⏸️ השהה</button>`;
+        ? `<button class="action-btn btn-success btn-sm btn-resume-proc" title="המשך פעילות תהליך ${pidText}">המשך</button>`
+        : `<button class="action-btn btn-warning btn-sm btn-pause-proc" title="השהה פעילות תהליך ${pidText}">השהיה</button>`;
 
       actionsHtml = `
         <div class="action-btn-group">
           ${pauseResumeBtn}
-          <button class="action-btn btn-danger btn-sm btn-kill-proc" ${isReadOnlyMode ? 'disabled aria-disabled="true"' : ''} title="${escapeHtml(killTitle)}">❌ סגור</button>
+          <button class="action-btn btn-danger btn-sm btn-kill-proc" ${isReadOnlyMode ? 'disabled aria-disabled="true"' : ''} title="${escapeHtml(killTitle)}">סגירה</button>
         </div>
       `;
     }
@@ -567,15 +587,13 @@ function renderSystemProcessesTable() {
           <span class="process-title" dir="ltr" style="text-align: right; display: inline-block;"><strong>${escapeHtml(proc.processName)}</strong></span>
         </div>
       </td>
-      <td class="font-mono" dir="ltr">${pidText}</td>
-      <td>${escapeHtml(proc.user)}</td>
-      <td>-</td>
+      <td class="font-mono column-pid" dir="ltr">${pidText}</td>
+      <td class="column-advanced">${escapeHtml(proc.user)}</td>
+      <td class="column-advanced">-</td>
       <td>
         ${proc.isSuspended ? '<span class="badge-suspended">מושהה (Suspended)</span>' : 'פעיל (Running)'}
       </td>
-      <td>
-        ${proc.cpu}% CPU / ${proc.memoryMb} MB
-      </td>
+      <td class="column-command">${proc.cpu}% CPU / ${proc.memoryMb} MB</td>
       <td class="text-right">
         ${actionsHtml}
       </td>
@@ -687,15 +705,15 @@ function renderTable() {
           <span class="process-title" dir="ltr" style="text-align: right; display: inline-block;">${escapeHtml(portObj.processName)}</span>
         </div>
       </td>
-      <td class="font-mono" dir="ltr">${pidText}</td>
-      <td>${escapeHtml(portObj.user)}</td>
-      <td>
+      <td class="font-mono column-pid" dir="ltr">${pidText}</td>
+      <td class="column-advanced">${escapeHtml(portObj.user)}</td>
+      <td class="column-advanced">
         <span class="protocol-badge ${protocolClass}">${protocol}</span>
       </td>
       <td>
         <span class="purpose-text">${escapeHtml(purposeText)}</span>
       </td>
-      <td class="command-cell" title="${escapeHtml(cmdClean)}" dir="ltr" style="text-align: left;">
+      <td class="command-cell column-command" title="${escapeHtml(cmdClean)}" dir="ltr" style="text-align: left;">
         ${escapeHtml(cmdClean)}
       </td>
       <td class="text-right">
@@ -706,17 +724,14 @@ function renderTable() {
               <line x1="12" y1="16" x2="12" y2="12"></line>
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
-          </button>
-          <button class="action-btn btn-restart-action" disabled aria-disabled="true" title="פעולת אתחול כבויה מטעמי בטיחות במערכת">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-            </svg>
+            <span>פרטים</span>
           </button>
           <button class="action-btn btn-kill-action" ${killDisabled ? 'disabled aria-disabled="true"' : ''} title="${escapeHtml(killDisabledReason)}" aria-label="${escapeHtml(killDisabledReason)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
               <line x1="12" y1="2" x2="12" y2="12"></line>
             </svg>
+            <span>${killDisabled ? 'מוגן' : 'סגירה'}</span>
           </button>
         </div>
       </td>
@@ -894,7 +909,7 @@ async function updateSystemUsage() {
     if (elements.metricMemoryUsage) {
       const usedGb = (data.memory.usedBytes / (1024 ** 3)).toFixed(2);
       const totalGb = (data.memory.totalBytes / (1024 ** 3)).toFixed(2);
-      elements.metricMemoryUsage.textContent = `${usedGb} GB / ${totalGb} GB`;
+      elements.metricMemoryUsage.textContent = `${usedGb} מתוך ${totalGb} GB`;
     }
     if (elements.metricMemoryDetail) {
       elements.metricMemoryDetail.textContent = `${data.memory.percentage}% בשימוש — ${getUsageLabel(data.memory.percentage, 'זיכרון')}`;

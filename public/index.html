@@ -19,8 +19,8 @@
       <div class="brand">
         <span class="logo" role="img" aria-label="מנהל פורטים">🔌</span>
         <div class="brand-text">
-          <h1>מנהל הפורטים שלי</h1>
-          <p class="subtitle">ניטור ובקרה של פורטים פעילים ב-macOS</p>
+          <h1>מה רץ לי במחשב?</h1>
+          <p class="subtitle">רואים אילו אפליקציות משתמשות ברשת — וסוגרים רק כשצריך</p>
         </div>
       </div>
       <div class="header-actions">
@@ -39,13 +39,13 @@
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
-          הגדרות אבטחה
+          מצב בטיחות
         </button>
         <button id="refresh-btn" class="btn btn-primary btn-refresh">
           <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
-          רענן סריקה
+          רענון
         </button>
       </div>
     </header>
@@ -54,8 +54,8 @@
     <section class="safety-banner glass" aria-label="הודעת אבטחה חשובה">
       <div class="safety-icon">🛡️</div>
       <div>
-        <h2>בקרה מקומית מאובטחת עם מנגנוני הגנה מובנים</h2>
-        <p>למען ביטחונך, פעולת הסגירה (Terminate) חסומה עבור שרת הממשק עצמו ועבור תהליכים חיוניים של מערכת ההפעלה. ביצוע אתחול (Restart) כבוי כרגע מטעמי אבטחה. המערכת פועלת באופן מקומי לחלוטין ללא שימוש בגופנים חיצוניים או שירותי מעקב.</p>
+        <h2>אתם מוגנים</h2>
+        <p>תהליכי macOS והאפליקציה הזו מוגנים מסגירה. כל המידע נשאר במחשב.</p>
       </div>
     </section>
 
@@ -64,8 +64,8 @@
       <div class="education-header" id="education-toggle" role="button" aria-expanded="false" tabindex="0">
         <span class="education-title-icon">🎓</span>
         <div class="education-title-text">
-          <h3>מדריך מהיר: מה זה פורט ואיך הכל עובד?</h3>
-          <p>לחץ כאן כדי להציג/להסתיר הסברים פשוטים וטיפים שימושיים</p>
+          <h3>חדש כאן? הסבר פשוט על פורטים ו־PID</h3>
+          <p>מדריך קצר, בלי ז׳רגון מיותר</p>
         </div>
         <svg class="education-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="6 9 12 15 18 9"></polyline>
@@ -94,29 +94,29 @@
     </section>
 
     <!-- Metrics Cards Grid -->
-    <section class="metrics-grid">
-      <div class="metric-card glass">
+    <section class="metrics-grid" aria-label="סיכום מצב">
+      <div class="metric-card metric-count glass">
         <div class="metric-icon active-icon">📊</div>
         <div class="metric-content">
           <h3>חיבורים פעילים</h3>
           <p id="metric-active-count" class="metric-value">--</p>
         </div>
       </div>
-      <div class="metric-card glass">
+      <div class="metric-card metric-count glass">
         <div class="metric-icon dev-icon">💻</div>
         <div class="metric-content">
           <h3>פורטי משתמש</h3>
           <p id="metric-user-count" class="metric-value">--</p>
         </div>
       </div>
-      <div class="metric-card glass">
+      <div class="metric-card metric-count glass">
         <div class="metric-icon system-icon">🛡️</div>
         <div class="metric-content">
           <h3>פורטי מערכת</h3>
           <p id="metric-system-count" class="metric-value">--</p>
         </div>
       </div>
-      <div class="metric-card glass">
+      <div class="metric-card metric-health glass">
         <div class="metric-icon system-icon">🖥️</div>
         <div class="metric-content">
           <h3>עומס מעבד (CPU)</h3>
@@ -125,7 +125,7 @@
           <div class="progress-bar-container"><div id="cpu-bar" class="progress-bar" style="width: 0%"></div></div>
         </div>
       </div>
-      <div class="metric-card glass">
+      <div class="metric-card metric-health glass">
         <div class="metric-icon dev-icon">🧠</div>
         <div class="metric-content">
           <h3>ניצול זיכרון</h3>
@@ -146,26 +146,33 @@
             <p id="warning-message" style="margin: 4px 0 0 0; font-size: 0.9rem; color: #aaa;">מומלץ לבדוק את התהליכים הבאים לפני סגירה או השהיה:</p>
           </div>
         </div>
-        <button id="quick-clean-btn" class="btn btn-danger" style="padding: 8px 16px; border-radius: 6px;">🗑️ אופטימיזציה מהירה</button>
+        <button id="quick-clean-btn" class="btn btn-danger hidden" aria-hidden="true" tabindex="-1">אופטימיזציה מהירה</button>
       </div>
       <div id="warning-suggestions" class="warning-suggestions"></div>
     </section>
 
     <!-- Controller Controls -->
     <section class="controls-panel glass">
+      <div class="workspace-intro">
+        <div>
+          <p class="eyebrow">אפליקציות וחיבורים</p>
+          <h2 id="current-view-title">מה פתוח עכשיו</h2>
+        </div>
+        <p id="results-count" class="results-count" aria-live="polite">טוען נתונים…</p>
+      </div>
       <div class="search-wrapper">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" id="search-input" placeholder="חיפוש לפי פורט, PID, שם תוכנה, משתמש או פקודה..." autocomplete="off">
+        <input type="text" id="search-input" placeholder="חיפוש אפליקציה או מספר פורט…" autocomplete="off" aria-label="חיפוש אפליקציה או מספר פורט">
       </div>
       
       <div class="filter-tabs">
-        <button class="filter-tab active" data-filter="all">כל הפורטים</button>
-        <button class="filter-tab" data-filter="user">פורטי משתמש</button>
-        <button class="filter-tab" data-filter="system">פורטי מערכת</button>
-        <button class="filter-tab" data-filter="system-resources">כל התהליכים במערכת</button>
+        <button class="filter-tab active" data-filter="all">הכול</button>
+        <button class="filter-tab" data-filter="user">האפליקציות שלי</button>
+        <button class="filter-tab" data-filter="system">macOS</button>
+        <button class="filter-tab" data-filter="system-resources">כל התהליכים</button>
       </div>
     </section>
 
@@ -176,12 +183,12 @@
           <thead>
             <tr>
               <th class="sortable" data-sort="port">פורט <span class="sort-indicator">▲</span></th>
-              <th class="sortable" data-sort="processName">שם תוכנה</th>
-              <th class="sortable" data-sort="pid">מזהה תהליך (PID)</th>
-              <th class="sortable" data-sort="user">משתמש</th>
-              <th>פרוטוקול / סוג</th>
-              <th>שימוש ותפקיד הפורט</th>
-              <th>פקודת הפעלה</th>
+              <th class="sortable" data-sort="processName">אפליקציה</th>
+              <th class="sortable column-pid" data-sort="pid">PID</th>
+              <th class="sortable column-advanced" data-sort="user">משתמש</th>
+              <th class="column-advanced">תקשורת</th>
+              <th>למה הוא פתוח?</th>
+              <th class="column-command">פקודת הפעלה</th>
               <th class="text-right">פעולות</th>
             </tr>
           </thead>
