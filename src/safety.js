@@ -141,9 +141,10 @@ class SafetyLayer {
    *   Expected fields: { port, pid, processName, user, ... }
    * @param {object} [options]
    * @param {boolean} [options.allowSystemPort] — override system port protection
+   * @param {boolean} [options.confirm] — commit the operation to rate limiters
    * @returns {Promise<{ ok: boolean, check: string, reason?: string, details?: object }>}
    */
-  async checkDestructive(target, { allowSystemPort = false } = {}) {
+  async checkDestructive(target, { allowSystemPort = false, confirm = false } = {}) {
     // === 1. Permission Mode ===
     if (this.config.mode === 'read-only') {
       return {
@@ -155,30 +156,32 @@ class SafetyLayer {
     }
 
     // === 2. Allowlist / Blocklist ===
-    if (this.config.mode === 'allowlist') {
-      if (!this.config.allowlist.has(target.port)) {
-        return {
-          ok: false,
-          check: 'allowlist',
-          reason: `Port ${target.port} is not in the allowlist. Add it first (set_allowlist) or switch modes.`,
-          details: { port: target.port, mode: 'allowlist' },
-        };
+    if (target.port != null) {
+      if (this.config.mode === 'allowlist') {
+        if (!this.config.allowlist.has(target.port)) {
+          return {
+            ok: false,
+            check: 'allowlist',
+            reason: `Port ${target.port} is not in the allowlist. Add it first (set_allowlist) or switch modes.`,
+            details: { port: target.port, mode: 'allowlist' },
+          };
+        }
       }
-    }
 
-    if (this.config.mode === 'blocklist') {
-      if (this.config.blocklist.has(target.port)) {
-        return {
-          ok: false,
-          check: 'blocklist',
-          reason: `Port ${target.port} is in the blocklist. Remove it first or switch modes.`,
-          details: { port: target.port, mode: 'blocklist' },
-        };
+      if (this.config.mode === 'blocklist') {
+        if (this.config.blocklist.has(target.port)) {
+          return {
+            ok: false,
+            check: 'blocklist',
+            reason: `Port ${target.port} is in the blocklist. Remove it first or switch modes.`,
+            details: { port: target.port, mode: 'blocklist' },
+          };
+        }
       }
     }
 
     // === 3. System port protection (ports < 1024) ===
-    if (target.port < 1024 && allowSystemPort !== true) {
+    if (target.port != null && target.port < 1024 && allowSystemPort !== true) {
       // Check if it's explicitly in the allowlist (override)
       if (!this.config.allowlist.has(target.port)) {
         return {
@@ -190,10 +193,21 @@ class SafetyLayer {
       }
     }
 
+    // === 3b. Dynamic System Process protection ===
+    if (target.isSystem === true) {
+      return {
+        ok: false,
+        check: 'system_process',
+        reason: `Process "${target.processName}" is identified as a macOS system process and cannot be terminated.`,
+        details: { processName: target.processName, pid: target.pid }
+      };
+    }
+
     // === 4. Process name blocklist ===
     const blockedProcess = this.config.processBlocklist.find(
       (name) => target.processName && target.processName.toLowerCase().includes(name.toLowerCase())
     );
+
 
     if (blockedProcess) {
       return {
@@ -208,28 +222,31 @@ class SafetyLayer {
     if (this.config.verifyOwner) {
       // The port info already has a 'user' field from lsof output
       if (target.user && target.user !== this.currentUser) {
+        const portContext = target.port !== undefined ? ` on port ${target.port}` : '';
         return {
           ok: false,
           check: 'owner',
-          reason: `Process on port ${target.port} is owned by "${target.user}", not by current user "${this.currentUser}". Can only terminate your own processes.`,
+          reason: `Process${portContext} is owned by "${target.user}", not by current user "${this.currentUser}". Can only terminate your own processes.`,
           details: { processOwner: target.user, currentUser: this.currentUser },
         };
       }
 
       // Double-check via ps as fallback (more reliable than lsof user field)
-      try {
-        const owner = await this._getProcessOwner(target.pid);
-        if (owner && owner !== this.currentUser) {
-          return {
-            ok: false,
-            check: 'owner_verified',
-            reason: `Process PID ${target.pid} is owned by "${owner}" (confirmed via ps), not by "${this.currentUser}". Blocked.`,
-            details: { pid: target.pid, verifiedOwner: owner, currentUser: this.currentUser },
-          };
+      if (target.pid != null) {
+        try {
+          const owner = await this._getProcessOwner(target.pid);
+          if (owner && owner !== this.currentUser) {
+            return {
+              ok: false,
+              check: 'owner_verified',
+              reason: `Process PID ${target.pid} is owned by "${owner}" (confirmed via ps), not by "${this.currentUser}". Blocked.`,
+              details: { pid: target.pid, verifiedOwner: owner, currentUser: this.currentUser },
+            };
+          }
+        } catch (_err) {
+          // If we can't verify, log but don't block — lsof user field is sufficient
+          console.warn(`[safety] Could not verify owner of PID ${target.pid}: ${_err.message}`);
         }
-      } catch (_err) {
-        // If we can't verify, log but don't block — lsof user field is sufficient
-        console.warn(`[safety] Could not verify owner of PID ${target.pid}: ${_err.message}`);
       }
     }
 
@@ -257,9 +274,11 @@ class SafetyLayer {
       };
     }
 
-    // All checks passed — record rate limit usage
-    this._rateLimiter.record();
-    this._cooldown.record();
+    // All checks passed — record rate limit usage ONLY if confirmed
+    if (confirm === true) {
+      this._rateLimiter.record();
+      this._cooldown.record();
+    }
 
     return { ok: true, check: 'all_passed' };
   }

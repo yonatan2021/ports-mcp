@@ -17,40 +17,79 @@
     <!-- Header -->
     <header class="app-header">
       <div class="brand">
-        <span class="logo">🔌</span>
+        <span class="logo" role="img" aria-label="מנהל פורטים">🔌</span>
         <div class="brand-text">
-          <h1>Port Manager</h1>
-          <p class="subtitle">macOS System Port Monitor & Controller</p>
+          <h1>מנהל הפורטים שלי</h1>
+          <p class="subtitle">ניטור ובקרה של פורטים פעילים ב-macOS</p>
         </div>
       </div>
       <div class="header-actions">
-        <span id="header-safety-badge" class="safety-header-badge" title="Safety mode: read-only">👁️</span>
+        <span id="header-safety-badge" class="safety-header-badge" title="מצב הגנה: קריאה בלבד">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-badge" style="width:16px;height:16px;">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </span>
         <div class="status-indicator">
           <span class="status-pulse"></span>
-          <span class="status-text">Server Active</span>
+          <span class="status-text">חיבור שרת פעיל</span>
         </div>
-        <button id="settings-btn" class="btn btn-secondary btn-settings" aria-label="Open safety settings">
+        <button id="settings-btn" class="btn btn-secondary btn-settings" aria-label="פתח הגדרות אבטחה">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-settings">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
-          Settings
+          הגדרות אבטחה
         </button>
         <button id="refresh-btn" class="btn btn-primary btn-refresh">
           <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
-          Refresh Scan
+          רענן סריקה
         </button>
       </div>
     </header>
 
     <!-- Local-only safety notice -->
-    <section class="safety-banner glass" aria-label="Port Manager safety notice">
+    <section class="safety-banner glass" aria-label="הודעת אבטחה חשובה">
       <div class="safety-icon">🛡️</div>
       <div>
-        <h2>Local-only controls with destructive-action guardrails</h2>
-        <p>Terminate is disabled for this UI server and system ports. Restart stays disabled until the backend exposes an explicit allowlist. No remote fonts or telemetry are loaded.</p>
+        <h2>בקרה מקומית מאובטחת עם מנגנוני הגנה מובנים</h2>
+        <p>למען ביטחונך, פעולת הסגירה (Terminate) חסומה עבור שרת הממשק עצמו ועבור תהליכים חיוניים של מערכת ההפעלה. ביצוע אתחול (Restart) כבוי כרגע מטעמי אבטחה. המערכת פועלת באופן מקומי לחלוטין ללא שימוש בגופנים חיצוניים או שירותי מעקב.</p>
+      </div>
+    </section>
+
+    <!-- Educational Widget -->
+    <section class="education-widget glass" aria-label="מדריך מהיר לפורטים">
+      <div class="education-header" id="education-toggle" role="button" aria-expanded="false" tabindex="0">
+        <span class="education-title-icon">🎓</span>
+        <div class="education-title-text">
+          <h3>מדריך מהיר: מה זה פורט ואיך הכל עובד?</h3>
+          <p>לחץ כאן כדי להציג/להסתיר הסברים פשוטים וטיפים שימושיים</p>
+        </div>
+        <svg class="education-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </div>
+      <div class="education-content hidden" id="education-content">
+        <div class="education-grid">
+          <div class="education-item">
+            <h4>🔌 מהו פורט (Port)?</h4>
+            <p>חשבו על המחשב שלכם כעל בניין משרדים ענק. כל תוכנה שצריכה לתקשר עם הרשת "שוכרת" חדר בבניין. מספר החדר הזה הוא ה**פורט**. לדוגמה, שרת פיתוח של אתר אינטרנט משתמש לרוב בחדר (פורט) 3000.</p>
+          </div>
+          <div class="education-item">
+            <h4>🆔 מהו מזהה תהליך (PID)?</h4>
+            <p>**Process ID** הוא מספר זיהוי ייחודי שמערכת ההפעלה מעניקה לכל תוכנה שרצה כרגע. פורט יכול להיות מופעל רק על ידי תוכנה אחת בכל רגע נתון. ה-PID עוזר לנו לדעת בדיוק איזו תוכנה מחזיקה בפורט.</p>
+          </div>
+          <div class="education-item">
+            <h4>⚠️ מה קורה כשסוגרים פורט (Terminate)?</h4>
+            <p>כאשר אתם מבצעים "סגירת תהליך", אתם מכבים את התוכנה שמפעילה את הפורט. אם זו תוכנת פיתוח שלכם, זה בטוח. אך אם מדובר בבסיס נתונים פעיל (כמו Postgres) או תהליך מערכת של macOS - זה עלול לגרום לאובדן עבודה שלא נשמרה.</p>
+          </div>
+          <div class="education-item">
+            <h4>🛡️ כיצד מנגנון הבטיחות מגן עליכם?</h4>
+            <p>כדי שלא תעשו טעויות בטעות, המערכת מונעת סגירה של תהליכי מערכת חיוניים של macOS. במקרה של סגירת פורטים מותרים, תתבקשו להקליד את מספר ה-PID של התוכנה ולסמן תיבת אישור - דרך בטוחה למנוע לחיצה שגויה.</p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -59,24 +98,57 @@
       <div class="metric-card glass">
         <div class="metric-icon active-icon">📊</div>
         <div class="metric-content">
-          <h3>Active Connections</h3>
+          <h3>חיבורים פעילים</h3>
           <p id="metric-active-count" class="metric-value">--</p>
         </div>
       </div>
       <div class="metric-card glass">
         <div class="metric-icon dev-icon">💻</div>
         <div class="metric-content">
-          <h3>User Space Ports (>1024)</h3>
+          <h3>פורטי משתמש</h3>
           <p id="metric-user-count" class="metric-value">--</p>
         </div>
       </div>
       <div class="metric-card glass">
         <div class="metric-icon system-icon">🛡️</div>
         <div class="metric-content">
-          <h3>System Ports (&le;1024)</h3>
+          <h3>פורטי מערכת</h3>
           <p id="metric-system-count" class="metric-value">--</p>
         </div>
       </div>
+      <div class="metric-card glass">
+        <div class="metric-icon system-icon">🖥️</div>
+        <div class="metric-content">
+          <h3>עומס מעבד (CPU)</h3>
+          <p id="metric-cpu-usage" class="metric-value">--%</p>
+          <p id="metric-cpu-detail" class="metric-detail">ממתין למדידה</p>
+          <div class="progress-bar-container"><div id="cpu-bar" class="progress-bar" style="width: 0%"></div></div>
+        </div>
+      </div>
+      <div class="metric-card glass">
+        <div class="metric-icon dev-icon">🧠</div>
+        <div class="metric-content">
+          <h3>ניצול זיכרון</h3>
+          <p id="metric-memory-usage" class="metric-value">-- GB</p>
+          <p id="metric-memory-detail" class="metric-detail">ממתין למדידה</p>
+          <div class="progress-bar-container"><div id="memory-bar" class="progress-bar" style="width: 0%"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dynamic Warning Banner -->
+    <section id="warning-banner" class="warning-banner glass hidden" style="margin-bottom: 20px;">
+      <div class="warning-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="warning-icon" style="font-size: 24px;">⚠️</span>
+          <div class="warning-title">
+            <h3 style="margin: 0; color: #ff4b4b; font-size: 1.1rem;">זוהה עומס כבד במערכת</h3>
+            <p id="warning-message" style="margin: 4px 0 0 0; font-size: 0.9rem; color: #aaa;">מומלץ לבדוק את התהליכים הבאים לפני סגירה או השהיה:</p>
+          </div>
+        </div>
+        <button id="quick-clean-btn" class="btn btn-danger" style="padding: 8px 16px; border-radius: 6px;">🗑️ אופטימיזציה מהירה</button>
+      </div>
+      <div id="warning-suggestions" class="warning-suggestions"></div>
     </section>
 
     <!-- Controller Controls -->
@@ -86,13 +158,14 @@
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
-        <input type="text" id="search-input" placeholder="Search by port, PID, process name, or command line..." autocomplete="off">
+        <input type="text" id="search-input" placeholder="חיפוש לפי פורט, PID, שם תוכנה, משתמש או פקודה..." autocomplete="off">
       </div>
       
       <div class="filter-tabs">
-        <button class="filter-tab active" data-filter="all">All Ports</button>
-        <button class="filter-tab" data-filter="user">User Space (>1024)</button>
-        <button class="filter-tab" data-filter="system">System (&le;1024)</button>
+        <button class="filter-tab active" data-filter="all">כל הפורטים</button>
+        <button class="filter-tab" data-filter="user">פורטי משתמש</button>
+        <button class="filter-tab" data-filter="system">פורטי מערכת</button>
+        <button class="filter-tab" data-filter="system-resources">כל התהליכים במערכת</button>
       </div>
     </section>
 
@@ -102,20 +175,21 @@
         <table class="ports-table">
           <thead>
             <tr>
-              <th class="sortable" data-sort="port">Port <span class="sort-indicator">▲</span></th>
-              <th class="sortable" data-sort="processName">Process Name</th>
-              <th class="sortable" data-sort="pid">PID</th>
-              <th class="sortable" data-sort="user">User</th>
-              <th>Protocol / Type</th>
-              <th>Startup Command</th>
-              <th class="text-right">Actions</th>
+              <th class="sortable" data-sort="port">פורט <span class="sort-indicator">▲</span></th>
+              <th class="sortable" data-sort="processName">שם תוכנה</th>
+              <th class="sortable" data-sort="pid">מזהה תהליך (PID)</th>
+              <th class="sortable" data-sort="user">משתמש</th>
+              <th>פרוטוקול / סוג</th>
+              <th>שימוש ותפקיד הפורט</th>
+              <th>פקודת הפעלה</th>
+              <th class="text-right">פעולות</th>
             </tr>
           </thead>
           <tbody id="ports-table-body">
             <tr>
-              <td colspan="7" class="loading-state">
+              <td colspan="8" class="loading-state">
                 <div class="spinner"></div>
-                Scanning macOS ports...
+                סורק פורטים פעילים ב-macOS...
               </td>
             </tr>
           </tbody>
@@ -125,8 +199,8 @@
       <!-- Empty State -->
       <div id="empty-state" class="empty-state hidden">
         <div class="empty-icon">🔍</div>
-        <h3>No active ports found</h3>
-        <p>Try clearing filters or checking if other applications are running.</p>
+        <h3>לא נמצאו פורטים פעילים</h3>
+        <p>נסה לנקות את תיבת החיפוש או לשנות מסננים.</p>
       </div>
     </main>
   </div>
@@ -137,99 +211,99 @@
   <!-- Settings Panel (side drawer) -->
   <aside id="settings-panel" class="settings-panel glass" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="settings-header">
-      <h2 id="settings-title">⚙️ Safety Settings</h2>
-      <button id="settings-close-btn" class="btn-close-modal" aria-label="Close settings">&times;</button>
+      <h2 id="settings-title">⚙️ הגדרות אבטחה והגנה<!-- Safety Settings --></h2>
+      <button id="settings-close-btn" class="btn-close-modal" aria-label="סגור הגדרות">&times;</button>
     </div>
 
     <div class="settings-body">
       <!-- Mode Selector -->
       <section class="settings-section">
-        <h3>Permission Mode</h3>
-        <p class="section-desc">Controls which ports can have destructive operations performed.</p>
+        <h3>מצב הגנת פורטים</h3>
+        <p class="section-desc">קבע אילו תוכנות ופורטים תורשה לסגור דרך ממשק זה.</p>
         <div class="mode-selector">
           <label class="mode-option mode-readonly">
             <input type="radio" name="safety-mode" value="read-only" id="mode-readonly">
             <span class="mode-icon">👁️</span>
             <div class="mode-text">
-              <strong>Read-Only</strong>
-              <small>View only — all kill/restart disabled</small>
+              <strong>קריאה בלבד (Read-Only)</strong>
+              <small>לצפייה בלבד — כל פעולות הסגירה והאתחול חסומות</small>
             </div>
           </label>
           <label class="mode-option mode-allowlist">
             <input type="radio" name="safety-mode" value="allowlist" id="mode-allowlist">
             <span class="mode-icon">✅</span>
             <div class="mode-text">
-              <strong>Allowlist</strong>
-              <small>Only explicitly added ports can be terminated</small>
+              <strong>רשימה מותרת (Allowlist)</strong>
+              <small>סגירה תתאפשר אך ורק עבור פורטים שתגדיר מראש</small>
             </div>
           </label>
           <label class="mode-option mode-blocklist">
             <input type="radio" name="safety-mode" value="blocklist" id="mode-blocklist">
             <span class="mode-icon">🚫</span>
             <div class="mode-text">
-              <strong>Blocklist</strong>
-              <small>All ports allowed except those blocked</small>
+              <strong>רשימה חסומה (Blocklist)</strong>
+              <small>סגירה מותרת לכל הפורטים, למעט אלו שתחסום כאן</small>
             </div>
           </label>
         </div>
         <div class="mode-status">
-          <span id="mode-status-badge" class="badge badge-mode badge-readonly">👁️ Read-Only</span>
-          <span id="mode-label" class="mode-label-text">Mode: Read-Only</span>
+          <span id="mode-status-badge" class="badge badge-mode badge-readonly">👁️ קריאה בלבד</span>
+          <span id="mode-label" class="mode-label-text">מצב פעיל: קריאה בלבד</span>
         </div>
       </section>
 
       <!-- Allowlist Manager -->
       <section id="allowlist-section" class="settings-section hidden">
-        <h3>Allowlist <span class="count-badge" id="allowlist-count">0</span></h3>
-        <p class="section-desc warn-info">Ports in this list are <strong>allowed</strong> for termination. Only works in Allowlist mode.</p>
+        <h3>רשימת פורטים מותרים לסגירה <span class="count-badge" id="allowlist-count">0</span></h3>
+        <p class="section-desc warn-info">רק פורטים שיופיעו ברשימה זו יהיו פתוחים לביצוע סגירה. פעיל רק כאשר מצב ההגנה מוגדר כ"רשימה מותרת".</p>
         <div class="list-input-row">
-          <input type="number" id="allowlist-input" class="list-input" placeholder="Enter port (1–65535)" min="1" max="65535" autocomplete="off">
-          <button id="allowlist-add-btn" class="btn btn-primary btn-list-add">Add Port</button>
+          <input type="number" id="allowlist-input" class="list-input" placeholder="הזן מספר פורט (1–65535)" min="1" max="65535" autocomplete="off">
+          <button id="allowlist-add-btn" class="btn btn-primary btn-list-add">אפשר פורט</button>
         </div>
         <ul id="allowlist-list" class="port-list">
-          <li class="list-empty">No ports in allowlist</li>
+          <li class="list-empty">אין פורטים ברשימה המותרת</li>
         </ul>
       </section>
 
       <!-- Blocklist Manager -->
       <section id="blocklist-section" class="settings-section hidden">
-        <h3>Blocklist <span class="count-badge" id="blocklist-count">0</span></h3>
-        <p class="section-desc warn-danger">Ports in this list are <strong>blocked</strong> from termination. System ports (≤1024) are pre-blocked by default.</p>
+        <h3>רשימת פורטים חסומים לסגירה <span class="count-badge" id="blocklist-count">0</span></h3>
+        <p class="section-desc warn-danger">פורטים ברשימה זו יהיו מוגנים לחלוטין מפני סגירה. שימו לב: פורטי מערכת (מתחת ל-1024) חסומים אוטומטית כברירת מחדל.</p>
         <div class="list-input-row">
-          <input type="number" id="blocklist-input" class="list-input" placeholder="Enter port (1–65535)" min="1" max="65535" autocomplete="off">
-          <button id="blocklist-add-btn" class="btn btn-danger btn-list-add">Block Port</button>
+          <input type="number" id="blocklist-input" class="list-input" placeholder="הזן מספר פורט (1–65535)" min="1" max="65535" autocomplete="off">
+          <button id="blocklist-add-btn" class="btn btn-danger btn-list-add">חסום פורט</button>
         </div>
         <ul id="blocklist-list" class="port-list">
-          <li class="list-empty">No ports in blocklist</li>
+          <li class="list-empty">אין פורטים ברשימה החסומה</li>
         </ul>
       </section>
 
       <!-- Current Status Summary -->
       <section class="settings-section">
-        <h3>Safety Status</h3>
+        <h3>מצב מערכת והגנה נוכחי</h3>
         <div class="status-grid">
           <div class="status-row">
-            <span class="status-label">Mode</span>
+            <span class="status-label">מצב הגנה</span>
             <span class="status-val" id="settings-status-mode">—</span>
           </div>
           <div class="status-row">
-            <span class="status-label">Allowlist</span>
+            <span class="status-label">פורטים מותרים</span>
             <span class="status-val" id="settings-status-allowlist">—</span>
           </div>
           <div class="status-row">
-            <span class="status-label">Blocklist</span>
+            <span class="status-label">פורטים חסומים</span>
             <span class="status-val" id="settings-status-blocklist">—</span>
           </div>
           <div class="status-row">
-            <span class="status-label">Current User</span>
+            <span class="status-label">משתמש נוכחי</span>
             <span class="status-val" id="settings-status-user">—</span>
           </div>
           <div class="status-row">
-            <span class="status-label">Rate Limit</span>
+            <span class="status-label">מגבלת פעולות</span>
             <span class="status-val" id="settings-status-rate-limit">—</span>
           </div>
           <div class="status-row">
-            <span class="status-label">Cooldown</span>
+            <span class="status-label">זמן השהייה</span>
             <span class="status-val" id="settings-status-cooldown">—</span>
           </div>
         </div>
@@ -241,46 +315,46 @@
   <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc modal-warning confirm-help">
     <div class="modal-card glass">
       <div class="modal-header">
-        <h2 id="modal-title">Confirm Action</h2>
-        <button class="btn-close-modal" id="modal-close-btn" aria-label="Close confirmation dialog">&times;</button>
+        <h2 id="modal-title">אישור פעולה רגישה</h2>
+        <button class="btn-close-modal" id="modal-close-btn" aria-label="סגור חלונית אישור">&times;</button>
       </div>
       <div class="modal-body">
-        <p id="modal-desc">Are you sure you want to perform this action?</p>
+        <p id="modal-desc">האם אתה בטוח שברצונך לסגור את התוכנה המחוברת לפורט זה?</p>
         <div class="process-preview-box">
           <div class="preview-row">
-            <span class="preview-label">Port:</span>
-            <span class="preview-value" id="preview-port">--</span>
+            <span class="preview-label">פורט:</span>
+            <span class="preview-value font-bold" id="preview-port">--</span>
           </div>
           <div class="preview-row">
-            <span class="preview-label">Process:</span>
+            <span class="preview-label">שם תוכנה:</span>
             <span class="preview-value font-bold" id="preview-process">--</span>
           </div>
           <div class="preview-row">
-            <span class="preview-label">PID:</span>
+            <span class="preview-label">מזהה (PID):</span>
             <span class="preview-value font-mono" id="preview-pid">--</span>
           </div>
           <div class="preview-row command-row">
-            <span class="preview-label">Command:</span>
-            <span class="preview-value font-mono command-text" id="preview-command">--</span>
+            <span class="preview-label">פקודת הפעלה:</span>
+            <span class="preview-value font-mono command-text" id="preview-command" dir="ltr">--</span>
           </div>
         </div>
         <p class="modal-warning" id="modal-warning">
-          ⚠️ <strong>Caution:</strong> Terminating a process sends a <code>SIGTERM</code> signal. This can cause data loss, corrupted files, or crashed services — especially for databases, servers, or long-running tasks.
+          ⚠️ <strong>אזהרה:</strong> סגירת תוכנה השייכת לפורט פעיל שולחת פקודת כיבוי (<code>SIGTERM</code>). פעולה זו עלולה לגרום לאובדן מידע שלא נשמר, קריסת שירותים או פגיעה במסדי נתונים פעילים.
         </p>
         <div class="confirm-gate" id="confirm-help">
           <label class="confirm-field" for="confirm-pid-input">
-            Type PID <span id="confirm-required-pid" class="font-mono">--</span> to enable terminate
-            <input id="confirm-pid-input" class="confirm-input font-mono" inputmode="numeric" autocomplete="off" placeholder="Enter PID exactly">
+            הקלד את מזהה התהליך (PID) <span id="confirm-required-pid" class="font-mono">--</span> כדי לאפשר סגירה:
+            <input id="confirm-pid-input" class="confirm-input font-mono" inputmode="numeric" autocomplete="off" placeholder="הקלד PID כאן">
           </label>
           <label class="confirm-checkbox">
             <input id="confirm-understand-checkbox" type="checkbox">
-            I understand this is destructive and may stop unsaved work.
+            אני מבין שזו פעולה בלתי הפיכה שעלולה להפסיק עבודה שלא נשמרה.
           </label>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
-        <button class="btn btn-danger" id="modal-confirm-btn">Terminate Process</button>
+        <button class="btn btn-secondary" id="modal-cancel-btn">ביטול</button>
+        <button class="btn btn-danger" id="modal-confirm-btn" disabled>סגור תוכנה (Terminate)</button>
       </div>
     </div>
   </div>
@@ -289,52 +363,52 @@
   <div id="details-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="details-title">
     <div class="modal-card glass">
       <div class="modal-header">
-        <h2 id="details-title">Process Specifications</h2>
-        <button class="btn-close-modal" id="details-close-btn" aria-label="Close details dialog">&times;</button>
+        <h2 id="details-title">פרטי תהליך ותקשורת מורחבים</h2>
+        <button class="btn-close-modal" id="details-close-btn" aria-label="סגור פרטים">&times;</button>
       </div>
       <div class="modal-body">
         <div class="spec-grid">
           <div class="spec-item">
-            <span class="spec-label">Port</span>
-            <span class="spec-val" id="spec-port">--</span>
+            <span class="spec-label">פורט</span>
+            <span class="spec-val font-bold" id="spec-port">--</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">Process Name</span>
-            <span class="spec-val" id="spec-name">--</span>
+            <span class="spec-label">שם תוכנה</span>
+            <span class="spec-val font-bold" id="spec-name">--</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">Process ID (PID)</span>
+            <span class="spec-label">מזהה תהליך (PID)</span>
             <span class="spec-val font-mono" id="spec-pid">--</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">Owner/User</span>
+            <span class="spec-label">משתמש מפעיל</span>
             <span class="spec-val" id="spec-user">--</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">Protocol</span>
+            <span class="spec-label">פרוטוקול</span>
             <span class="spec-val" id="spec-protocol">--</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">IP Type</span>
+            <span class="spec-label">סוג IP</span>
             <span class="spec-val" id="spec-type">--</span>
           </div>
         </div>
         <div class="spec-command-section">
-          <span class="spec-label">Full Startup Command Line</span>
+          <span class="spec-label">פקודת הפעלה מלאה במערכת (Command Line)</span>
           <div class="command-box-wrapper">
-            <pre class="command-pre"><code id="spec-command">--</code></pre>
+            <pre class="command-pre" dir="ltr"><code id="spec-command">--</code></pre>
             <button class="btn btn-copy" id="btn-copy-command">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-copy">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
               </svg>
-              Copy
+              העתק פקודה
             </button>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-primary" id="details-ok-btn">Done</button>
+        <button class="btn btn-primary" id="details-ok-btn">אישור</button>
       </div>
     </div>
   </div>

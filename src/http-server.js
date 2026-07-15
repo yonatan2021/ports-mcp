@@ -106,6 +106,66 @@ function createApp({ service = createPortService(), staticDir = path.join(__dirn
     }
   });
 
+  app.get('/api/system/usage', async (_req, res) => {
+    try {
+      const usage = await service.getSystemUsage();
+      res.json(usage);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.get('/api/system/processes', async (_req, res) => {
+    try {
+      const processes = await service.getSystemProcesses();
+      res.json({ processes });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/suspend', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const pid = Number(body.pid);
+      if (!Number.isInteger(pid) || pid < 1) {
+        return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
+      }
+      const result = await service.suspendProcess({ pid, confirm: body.confirm });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/resume', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const pid = Number(body.pid);
+      if (!Number.isInteger(pid) || pid < 1) {
+        return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
+      }
+      const result = await service.resumeProcess({ pid });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/kill', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const pid = Number(body.pid);
+      if (!Number.isInteger(pid) || pid < 1) {
+        return res.status(400).json({ error: { code: 'INVALID_PID', message: 'PID must be a positive integer', details: { pid: body.pid } } });
+      }
+      const result = await service.killProcess({ pid, confirm: body.confirm });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   // ─── Safety API ──────────────────────────────────────────────
 
   /** GET /api/safety — current safety status snapshot */

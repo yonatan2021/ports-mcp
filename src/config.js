@@ -45,7 +45,8 @@ function getSystemPortRange() {
 
 const DEFAULTS = {
   /** Permission mode: 'read-only' | 'allowlist' | 'blocklist' */
-  mode: 'read-only',
+  mode: 'blocklist',
+
   /** Port numbers that are allowed for destructive operations (allowlist mode) */
   allowlist: [],
   /** Port numbers that are blocked for destructive operations (blocklist mode) */

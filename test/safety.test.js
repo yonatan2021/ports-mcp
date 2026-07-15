@@ -9,9 +9,9 @@ const { createPortService, PortManagerError } = require('../src/port-service');
 // SafetyConfig
 // ======================================================================
 
-test('SafetyConfig defaults to read-only mode with system port blocklist', () => {
+test('SafetyConfig defaults to blocklist mode with system port blocklist', () => {
   const config = new SafetyConfig();
-  assert.equal(config.mode, 'read-only');
+  assert.equal(config.mode, 'blocklist');
   assert.ok(config.blocklist.has(80));   // HTTP
   assert.ok(config.blocklist.has(443));  // HTTPS
   assert.ok(config.blocklist.has(22));   // SSH
@@ -61,12 +61,12 @@ test('SafetyConfig loads mode from env var', () => {
   }
 });
 
-test('SafetyConfig falls back to read-only on invalid mode', () => {
+test('SafetyConfig falls back to blocklist on invalid mode', () => {
   const original = process.env.PORTS_MCP_MODE;
   try {
     process.env.PORTS_MCP_MODE = 'invalid';
     const config = new SafetyConfig();
-    assert.equal(config.mode, 'read-only');
+    assert.equal(config.mode, 'blocklist');
   } finally {
     process.env.PORTS_MCP_MODE = original;
   }
@@ -88,7 +88,7 @@ test('SafetyConfig options override env vars', () => {
 
 test('SafetyConfig allows runtime mode switching', () => {
   const config = new SafetyConfig();
-  assert.equal(config.mode, 'read-only');
+  assert.equal(config.mode, 'blocklist');
   config.setMode('allowlist');
   assert.equal(config.mode, 'allowlist');
   config.setMode('blocklist');
@@ -133,7 +133,7 @@ test('SafetyConfig toJSON returns sorted arrays', () => {
   assert.deepEqual(json.allowlist, [3000, 8080, 9090]);
   assert.equal(typeof json.processBlocklistCount, 'number');
   assert.ok(json.processBlocklistCount > 0);
-  assert.equal(json.mode, 'read-only');
+  assert.equal(json.mode, 'blocklist');
 });
 
 // ======================================================================
@@ -364,10 +364,10 @@ test('SafetyLayer rate limits after exceeding max per minute', async () => {
     { port: 3001, pid: 101, processName: 'node', user: 'yoni' },
   ];
 
-  const r1 = await layer.checkDestructive(targets[0]);
+  const r1 = await layer.checkDestructive(targets[0], { confirm: true });
   assert.equal(r1.ok, true);
 
-  const r2 = await layer.checkDestructive(targets[1]);
+  const r2 = await layer.checkDestructive(targets[1], { confirm: true });
   assert.equal(r2.ok, true);
 
   const r3 = await layer.checkDestructive(targets[0]);
@@ -379,7 +379,7 @@ test('SafetyLayer enforces cooldown between operations', async () => {
   const config = new SafetyConfig({ mode: 'allowlist', allowlist: [3000, 3001], verifyOwner: false, cooldownMs: 5000 });
   const layer = new SafetyLayer({ config, currentUser: 'yoni' });
 
-  const r1 = await layer.checkDestructive({ port: 3000, pid: 100, processName: 'node', user: 'yoni' });
+  const r1 = await layer.checkDestructive({ port: 3000, pid: 100, processName: 'node', user: 'yoni' }, { confirm: true });
   assert.equal(r1.ok, true);
 
   const r2 = await layer.checkDestructive({ port: 3001, pid: 101, processName: 'node', user: 'yoni' });
@@ -542,3 +542,49 @@ test('SafetyLayer blocks when ps shows different owner than current user', async
   assert.equal(result.ok, false);
   assert.equal(result.check, 'owner_verified');
 });
+
+test('SafetyLayer blocks destructive ops on processes flagged as isSystem', async () => {
+  const config = new SafetyConfig({ mode: 'blocklist' });
+  const layer = new SafetyLayer({ config, currentUser: 'yonig' });
+  const target = { port: 7000, pid: 12345, processName: 'ControlCenter', user: 'yonig', isSystem: true };
+
+  const result = await layer.checkDestructive(target);
+  assert.equal(result.ok, false);
+  assert.equal(result.check, 'system_process');
+  assert.ok(result.reason.includes('system process'));
+});
+
+test('SafetyLayer permits port-less process for current user but blocks system processes', async () => {
+  const { SafetyConfig } = require('../src/config');
+  const { SafetyLayer } = require('../src/safety');
+  
+  // Safe user process with undefined port (blocklist mode)
+  const config = new SafetyConfig({ mode: 'blocklist' });
+  const safety = new SafetyLayer({
+    config,
+    currentUser: 'yonig',
+    selfPid: 9999
+  });
+
+  const userProc = { pid: 1234, processName: 'node', user: 'yonig', isSystem: false };
+  const res1 = await safety.checkDestructive(userProc);
+  assert.equal(res1.ok, true);
+
+  // System process with undefined port
+  const sysProc = { pid: 1, processName: 'launchd', user: 'root', isSystem: true };
+  const res2 = await safety.checkDestructive(sysProc);
+  assert.equal(res2.ok, false);
+  assert.equal(res2.check, 'system_process');
+
+  // Safe user process with undefined port (allowlist mode)
+  const configAllow = new SafetyConfig({ mode: 'allowlist' });
+  const safetyAllow = new SafetyLayer({
+    config: configAllow,
+    currentUser: 'yonig',
+    selfPid: 9999
+  });
+  const res3 = await safetyAllow.checkDestructive(userProc);
+  assert.equal(res3.ok, true);
+});
+
+

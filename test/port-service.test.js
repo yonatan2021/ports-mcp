@@ -132,3 +132,136 @@ test('restartProcessOnPort is intentionally unavailable without an allowlisted r
     (err) => err instanceof PortManagerError && err.code === 'RESTART_NOT_IMPLEMENTED'
   );
 });
+
+test('isSystemProcess correctly identifies system and user processes', () => {
+  const { isSystemProcess } = require('../src/port-service');
+
+  // 1. System user should be system process
+  assert.equal(isSystemProcess({ user: 'root', processName: 'node', commandLine: 'node' }), true);
+  assert.equal(isSystemProcess({ user: '_windowserver', processName: 'WindowServer', commandLine: 'WindowServer' }), true);
+
+  // 2. System path should be system process
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'rapportd', commandLine: '/usr/libexec/rapportd' }), true);
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'launchd', commandLine: '/System/Library/CoreServices/launchd' }), true);
+
+  // 3. System process name should be system process
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'WindowServer', commandLine: 'WindowServer' }), true);
+
+  // 4. Custom developer process should NOT be system process
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'node', commandLine: 'node server.js' }), false);
+  assert.equal(isSystemProcess({ user: 'yonig', processName: 'python3', commandLine: 'python3 -m http.server' }), false);
+});
+
+test('listPorts enriches results with isSystem', async () => {
+  const service = createPortService({
+    listPorts: async () => [
+      { port: 3000, pid: 123, processName: 'node', user: 'yonig', type: 'IPv4', protocol: 'TCP', address: '*:3000', commandLine: 'node server.js' },
+      { port: 7000, pid: 456, processName: 'ControlCenter', user: 'yonig', type: 'IPv4', protocol: 'TCP', address: '*:7000', commandLine: '/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter' }
+    ]
+  });
+  const ports = await service.listPorts();
+  assert.equal(ports[0].isSystem, false);
+  assert.equal(ports[1].isSystem, true);
+  });
+
+  test('getSystemUsage returns CPU and memory statistics', async () => {
+    const service = createPortService();
+  const usage = await service.getSystemUsage();
+  assert.ok(typeof usage.cpu === 'number');
+  assert.ok(typeof usage.memory.percentage === 'number');
+  assert.ok(usage.memory.totalBytes > 0);
+});
+
+test('getSystemUsage uses macOS memory pressure instead of raw free memory', async () => {
+  const calls = [];
+  const runner = {
+    execFile: async (file, args) => {
+      calls.push([file, args]);
+      assert.equal(file, 'memory_pressure');
+      assert.deepEqual(args, ['-Q']);
+      return {
+        stdout: 'The system has 17179869184 (1048576 pages with a page size of 16384).\nSystem-wide memory free percentage: 58%\n',
+        stderr: '',
+        exitCode: 0,
+      };
+    }
+  };
+  const service = createPortService({ runner });
+
+  const usage = await service.getSystemUsage();
+
+  assert.equal(usage.memory.percentage, 42);
+  assert.equal(usage.memory.usedBytes, Math.round(usage.memory.totalBytes * 0.42));
+  assert.deepEqual(calls, [['memory_pressure', ['-Q']]]);
+});
+
+test('getSystemProcesses parses ps output correctly', async () => {
+  const psStdout = ` %CPU   RSS STAT   PID USER COMM
+ 12.5 1048576 S   1234 yoni /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+  0.0  51200 T   5678 yoni /usr/local/bin/node
+  1.5 2048000 R      1 root /sbin/launchd
+`;
+  const runner = {
+    execFile: async () => ({ stdout: psStdout, stderr: '', exitCode: 0 })
+  };
+  const service = createPortService({ runner, currentUser: 'yoni' });
+  const list = await service.getSystemProcesses();
+
+  assert.equal(list.length, 3);
+  assert.equal(list[0].pid, 1234);
+  assert.equal(list[0].processName, 'Google Chrome');
+  assert.equal(list[0].cpu, 12.5);
+  assert.equal(list[0].memoryMb, 1024.0);
+  assert.equal(list[0].isSuspended, false);
+  assert.equal(list[0].isSystem, false);
+
+  assert.equal(list[1].pid, 1);
+  assert.equal(list[1].isSystem, true);
+
+  assert.equal(list[2].pid, 5678);
+  assert.equal(list[2].isSuspended, true);
+});
+
+test('suspendProcess/resumeProcess/killProcess operate on target pid', async () => {
+  const psStdout = ` %CPU   RSS STAT   PID USER COMM
+  0.0  51200 S   5678 yoni /usr/local/bin/node
+`;
+  const runner = {
+    execFile: async () => ({ stdout: psStdout, stderr: '', exitCode: 0 })
+  };
+  const signals = [];
+  const service = createPortService({
+    runner,
+    selfPid: 9999,
+    killFn: (pid, signal) => signals.push([pid, signal])
+  });
+
+  // Suspend (dryRun by default)
+  const suspendDryRes = await service.suspendProcess({ pid: 5678 });
+  assert.equal(suspendDryRes.dryRun, true);
+  assert.equal(suspendDryRes.wouldSignal, 'SIGSTOP');
+
+  // Suspend (confirm)
+  const suspendRes = await service.suspendProcess({ pid: 5678, confirm: true });
+  assert.deepEqual(suspendRes, { ok: true, pid: 5678, processName: 'node' });
+  assert.deepEqual(signals, [[5678, 'SIGSTOP']]);
+
+  // Resume
+  const resumeRes = await service.resumeProcess({ pid: 5678 });
+  assert.deepEqual(resumeRes, { ok: true, pid: 5678, processName: 'node' });
+  assert.deepEqual(signals, [[5678, 'SIGSTOP'], [5678, 'SIGCONT']]);
+
+  // Kill (dryRun by default)
+  const killDryRes = await service.killProcess({ pid: 5678 });
+  assert.equal(killDryRes.dryRun, true);
+  assert.equal(killDryRes.wouldSignal, 'SIGTERM');
+
+  // Kill (confirm)
+  const killConfirmRes = await service.killProcess({ pid: 5678, confirm: true });
+  assert.equal(killConfirmRes.dryRun, false);
+  assert.equal(killConfirmRes.signalSent, 'SIGTERM');
+  assert.deepEqual(signals, [[5678, 'SIGSTOP'], [5678, 'SIGCONT'], [5678, 'SIGTERM']]);
+});
+
+
+

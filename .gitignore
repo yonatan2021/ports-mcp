@@ -62,6 +62,10 @@ $RECYCLE.BIN/
 # === Build & Dist ===
 dist/
 build/
+!build/
+build/*
+!build/icon.svg
+!build/icon.icns
 out/
 *.tsbuildinfo
 

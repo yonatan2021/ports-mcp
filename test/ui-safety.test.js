@@ -32,10 +32,10 @@ test('kill confirmation requires explicit PID entry before enabling destructive 
 });
 
 test('self and system ports render with disabled destructive controls and explanations', () => {
-  assert.match(appJs, /const isSystemPort = Number\.isFinite\(portNumber\) && portNumber <= 1024/);
-  assert.match(appJs, /const killDisabled = isSelf \|\| isSystemPort/);
+  assert.match(appJs, /const isSystemProcess = portObj\.isSystem === true/);
+  assert.match(appJs, /const killDisabled = isSelf \|\| isSystemProcess/);
   assert.match(appJs, /Self-protection: this is the Port Manager UI server/);
-  assert.match(appJs, /System-port protection: ports 1024 and below/);
+  assert.match(appJs, /System-process protection/);
   assert.match(appJs, /Restart disabled: arbitrary command restart is not available/);
   assert.match(appJs, /const portText = escapeHtml\(String\(portObj\.port \?\? ''\)\)/);
   assert.match(appJs, /const pidText = escapeHtml\(String\(portObj\.pid \?\? ''\)\)/);
@@ -115,7 +115,7 @@ test('app.js checks read-only mode and disables kill buttons accordingly', () =>
   assert.match(appJs, /isReadOnlyMode/);
   assert.match(appJs, /window\.SafetySettings/);
   assert.match(appJs, /canKill/);
-  assert.match(appJs, /killDisabled = isSelf \|\| isSystemPort \|\| isReadOnlyMode/);
+  assert.match(appJs, /killDisabled = isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
   assert.match(appJs, /Server is in read-only mode/);
 });
 
@@ -167,4 +167,21 @@ test('settings.js is loaded after app.js', () => {
   assert.ok(appJsIndex > 0, 'app.js script tag must exist');
   assert.ok(settingsJsIndex > 0, 'settings.js script tag must exist');
   assert.ok(settingsJsIndex > appJsIndex, 'settings.js must be loaded after app.js');
+});
+
+test('UI includes performance management and monitoring widgets', () => {
+  // Check index.html for CPU, memory and warning banner
+  assert.match(indexHtml, /id="metric-cpu-usage"/);
+  assert.match(indexHtml, /id="metric-memory-usage"/);
+  assert.match(indexHtml, /id="warning-banner"/);
+  assert.match(indexHtml, /id="quick-clean-btn"/);
+  assert.match(indexHtml, /data-filter="system-resources"/);
+
+  // Check app.js for resource monitoring functions
+  assert.match(appJs, /updateSystemUsage/);
+  assert.match(appJs, /renderWarningBanner/);
+  assert.match(appJs, /fetchSystemProcesses/);
+  assert.match(appJs, /renderSystemProcessesTable/);
+  assert.match(appJs, /suspendSystemProcess/);
+  assert.match(appJs, /resumeSystemProcess/);
 });
