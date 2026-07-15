@@ -15,7 +15,7 @@ test('tagged versions build, test, and publish both macOS architectures', () => 
   const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'release.yml'), 'utf8');
   assert.match(workflow, /tags:\s*\n\s*- ['"]v\*['"]/);
   assert.match(workflow, /npm test/);
-  assert.match(workflow, /--arm64 --x64/);
+  assert.match(workflow, /--arm64 --x64 --publish never/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /contents: write/);
 });

@@ -35,7 +35,7 @@ jobs:
         run: npm test
 
       - name: Build arm64 and Intel artifacts
-        run: npm run package:mac -- --arm64 --x64
+        run: npm run package:mac -- --arm64 --x64 --publish never
 
       - name: Verify update archives
         run: |
