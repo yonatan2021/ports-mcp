@@ -176,9 +176,10 @@ DST=${shellQuote(targetApp)}
 NEW="\${DST}.update-new"
 OLD="\${DST}.update-old"
 SCRIPT_PATH="$0"
+OPENED=0
 cleanup() {
   rm -f "$SCRIPT_PATH" 2>/dev/null || true
-  if [ -d "$DST" ]; then /usr/bin/open "$DST" 2>/dev/null || true; fi
+  if [ "$OPENED" -eq 0 ] && [ -d "$DST" ]; then /usr/bin/open "$DST" 2>/dev/null || true; fi
 }
 trap cleanup EXIT
 for _ in $(seq 1 120); do
@@ -205,6 +206,12 @@ if ! mv "$NEW" "$DST"; then
   mv "$OLD" "$DST" 2>/dev/null || true
   exit 1
 fi
+if ! /usr/bin/open "$DST"; then
+  rm -rf "$DST"
+  mv "$OLD" "$DST" 2>/dev/null || true
+  exit 1
+fi
+OPENED=1
 rm -rf "$OLD"
 ${workDir ? `rm -rf ${shellQuote(workDir)}` : ''}
 `;
@@ -240,6 +247,10 @@ async function launchSwap({ sourceApp, targetApp, workDir, tempDir, pid = proces
   const scriptPath = path.join(tempDir, `ports-mcp-update-${Date.now()}.sh`);
   await fsPromises.writeFile(scriptPath, script, { mode: 0o700 });
   const child = spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' });
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', reject);
+  });
   child.unref();
   return { scriptPath };
 }

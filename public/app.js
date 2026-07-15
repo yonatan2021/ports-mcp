@@ -9,7 +9,6 @@ let currentSort = { column: 'port', order: 'asc' };
 let pollIntervalId = null;
 let systemUsageIntervalId = null;
 let destructiveActionContext = null;
-let appUpdateToken = null;
 let appUpdateReleaseUrl = null;
 let appUpdateSupported = false;
 const POLL_INTERVAL = 8000; // 8 seconds
@@ -154,9 +153,8 @@ async function fetchAppInfo() {
     if (!response.ok) throw new Error('App info unavailable');
     const info = await response.json();
     elements.currentVersion.textContent = info.currentVersion || '—';
-    appUpdateToken = typeof info.updateToken === 'string' ? info.updateToken : null;
     appUpdateReleaseUrl = typeof info.releaseUrl === 'string' ? info.releaseUrl : null;
-    appUpdateSupported = info.updateSupported === true && Boolean(appUpdateToken);
+    appUpdateSupported = info.updateSupported === true && typeof window.portManager?.applyUpdate === 'function';
 
     if (info.updateAvailable) {
       elements.updateStatus.textContent = `עדכון זמין: גרסה ${info.latestVersion}`;
@@ -183,12 +181,8 @@ async function applyAppUpdate() {
   elements.updateStatus.textContent = 'מוריד ומאמת את העדכון…';
 
   try {
-    const response = await fetch('/api/app-update', {
-      method: 'POST',
-      headers: { 'X-Update-Token': appUpdateToken },
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.error?.message || 'Update failed');
+    const body = await window.portManager.applyUpdate();
+    if (!body?.ok || !body?.handedOff) throw new Error('Update handoff failed');
 
     elements.updateStatus.textContent = 'העדכון אומת — מפעיל מחדש…';
     elements.updateButton.classList.add('hidden');

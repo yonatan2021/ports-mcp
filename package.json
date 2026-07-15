@@ -1,6 +1,6 @@
 {
   "name": "ports-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Yonatan",
   "description": "Local-only macOS port manager with a guarded MCP stdio server and optional web UI.",
   "main": "desktop/main.js",

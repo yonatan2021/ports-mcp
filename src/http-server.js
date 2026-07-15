@@ -1,5 +1,4 @@
 const express = require('express');
-const crypto = require('node:crypto');
 const path = require('node:path');
 const { createPortService, PortManagerError } = require('./port-service');
 
@@ -40,10 +39,18 @@ function createApp({
   safetyLayer = null,
   config = null,
   getAppInfo = null,
-  applyAppUpdate = null,
-  updateToken = null,
 } = {}) {
   const app = express();
+
+  // Only accept loopback Host headers. Binding to 127.0.0.1 prevents remote
+  // connections; this additionally prevents browser DNS-rebinding attacks.
+  app.use((req, res, next) => {
+    const host = req.get('host') || '';
+    if (!/^(?:127\.0\.0\.1|localhost):\d{1,5}$/.test(host)) {
+      return res.status(403).json({ error: { code: 'HOST_NOT_ALLOWED', message: 'Host is not allowed', details: {} } });
+    }
+    next();
+  });
 
   // ─── Security Headers ───────────────────────────────────────────
   app.use((_req, res, next) => {
@@ -77,34 +84,6 @@ function createApp({
     }
   });
 
-  app.post('/api/app-update', async (req, res) => {
-    // Release archives are large; keep the normal 30-second API timeout from
-    // aborting a valid update on slower connections.
-    req.setTimeout(0);
-    res.setTimeout(0);
-    if (!applyAppUpdate || !updateToken) {
-      return res.status(501).json({ error: { code: 'APP_UPDATE_UNAVAILABLE', message: 'In-app update is not available', details: {} } });
-    }
-    const suppliedToken = req.get('X-Update-Token') || '';
-    const expected = Buffer.from(updateToken);
-    const supplied = Buffer.from(suppliedToken);
-    if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
-      return res.status(403).json({ error: { code: 'UPDATE_TOKEN_INVALID', message: 'Update authorization failed', details: {} } });
-    }
-
-    try {
-      res.json(await applyAppUpdate());
-    } catch (error) {
-      console.error('App update failed:', error);
-      res.status(500).json({
-        error: {
-          code: 'UPDATE_FAILED',
-          message: error instanceof Error ? error.message : 'App update failed',
-          details: {},
-        },
-      });
-    }
-  });
 
   app.get('/api/ports', async (_req, res) => {
     try {

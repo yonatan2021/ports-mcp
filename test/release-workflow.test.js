@@ -18,4 +18,7 @@ test('tagged versions build, test, and publish both macOS architectures', () => 
   assert.match(workflow, /--arm64 --x64 --publish never/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /contents: write/);
+  assert.match(workflow, /CFBundleIdentifier/);
+  assert.match(workflow, /CFBundleShortVersionString/);
+  assert.match(workflow, /lipo -archs/);
 });

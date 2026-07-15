@@ -3,7 +3,6 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const { createApp } = require('../src/http-server');
 const { createAppInfoProvider, isNewerVersion } = require('../src/app-info');
-const httpServerSource = require('node:fs').readFileSync(require.resolve('../src/http-server'), 'utf8');
 
 test('isNewerVersion compares semantic versions with optional v prefixes', () => {
   assert.equal(isNewerVersion('v1.1.0', '1.0.1'), true);
@@ -59,42 +58,41 @@ test('GET /api/app-info exposes app information', async () => {
   }
 });
 
-test('POST /api/app-update requires the per-process token before applying an update', async () => {
-  let applyCount = 0;
-  const app = createApp({
-    service: {},
-    getAppInfo: async () => ({ currentVersion: '1.0.1' }),
-    updateToken: 'test-update-token',
-    applyAppUpdate: async () => {
-      applyCount += 1;
-      return { ok: true, handedOff: true, version: '1.1.0' };
-    },
-  });
+test('POST /api/app-update is not exposed over HTTP', async () => {
+  const app = createApp({ service: {}, getAppInfo: async () => ({ currentVersion: '1.0.1' }) });
   const server = http.createServer(app);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 
   try {
     const { port } = server.address();
-    const url = `http://127.0.0.1:${port}/api/app-update`;
-    const denied = await fetch(url, { method: 'POST' });
-    assert.equal(denied.status, 403);
-    assert.equal(applyCount, 0);
-
-    const accepted = await fetch(url, {
-      method: 'POST',
-      headers: { 'X-Update-Token': 'test-update-token' },
-    });
-    assert.equal(accepted.status, 200);
-    assert.deepEqual(await accepted.json(), { ok: true, handedOff: true, version: '1.1.0' });
-    assert.equal(applyCount, 1);
+    const response = await fetch(`http://127.0.0.1:${port}/api/app-update`, { method: 'POST' });
+    assert.equal(response.status, 404);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
 });
 
-test('the app update route disables the normal request timeout for large downloads', () => {
-  assert.match(
-    httpServerSource,
-    /app\.post\('\/api\/app-update'[\s\S]*?req\.setTimeout\(0\);[\s\S]*?res\.setTimeout\(0\);/
-  );
+test('the local HTTP server rejects DNS-rebinding Host headers', async () => {
+  const app = createApp({ service: {}, getAppInfo: async () => ({ currentVersion: '1.0.3' }) });
+  const server = http.createServer(app);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+  try {
+    const { port } = server.address();
+    const status = await new Promise((resolve, reject) => {
+      const request = http.get({
+        hostname: '127.0.0.1',
+        port,
+        path: '/api/app-info',
+        headers: { Host: 'attacker.example' },
+      }, response => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      request.on('error', reject);
+    });
+    assert.equal(status, 403);
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
 });

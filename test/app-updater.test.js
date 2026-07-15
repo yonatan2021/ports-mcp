@@ -127,6 +127,8 @@ test('buildSwapScript stages atomically, rolls back on failure, and relaunches',
   assert.match(script, /mv "\$DST" "\$OLD"/);
   assert.match(script, /mv "\$OLD" "\$DST"/);
   assert.match(script, /\/usr\/bin\/open "\$DST"/);
+  assert.match(script, /if ! \/usr\/bin\/open "\$DST"/);
+  assert.match(script, /rm -rf "\$DST"/);
   assert.match(script, /trap cleanup EXIT/);
   assert.match(script, /APP_PID=1234/);
 });

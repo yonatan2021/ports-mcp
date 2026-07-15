@@ -1,5 +1,5 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
-const crypto = require('node:crypto');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const path = require('node:path');
 const { createApp } = require('../src/http-server');
 const { SafetyConfig } = require('../src/config');
 const { SafetyLayer } = require('../src/safety');
@@ -75,6 +75,7 @@ function createMainWindow() {
     title: 'מנהל הפורטים שלי',
     backgroundColor: '#111827',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -89,6 +90,15 @@ function createMainWindow() {
     if (url.startsWith('https:')) shell.openExternal(url);
     return { action: 'deny' };
   });
+  const preventUntrustedNavigation = (event, url) => {
+    try {
+      if (new URL(url).origin !== new URL(localServer.url).origin) event.preventDefault();
+    } catch {
+      event.preventDefault();
+    }
+  };
+  mainWindow.webContents.on('will-navigate', preventUntrustedNavigation);
+  mainWindow.webContents.on('will-redirect', preventUntrustedNavigation);
 }
 
 function createApplicationMenu() {
@@ -138,22 +148,31 @@ app.whenReady().then(async () => {
         tempDir: app.getPath('temp'),
       })
     : null;
-  const updateToken = updater ? crypto.randomBytes(32).toString('hex') : null;
   const getBaseAppInfo = createAppInfoProvider({ currentVersion: app.getVersion() });
   const getAppInfo = async () => ({
     ...(await getBaseAppInfo()),
     updateSupported: Boolean(updater),
-    updateToken,
   });
-  const applyAppUpdate = updater
-    ? async () => {
-        const result = await updater.apply();
-        if (result.handedOff) setTimeout(() => app.quit(), 750);
-        return result;
-      }
-    : null;
   localServer = await startLocalServer({
-    app: createApp({ service, safetyLayer, config, getAppInfo, applyAppUpdate, updateToken }),
+    app: createApp({ service, safetyLayer, config, getAppInfo }),
+  });
+
+  const trustedRendererOrigin = new URL(localServer.url).origin;
+  ipcMain.handle('app-update', async (event) => {
+    let senderOrigin;
+    try {
+      senderOrigin = new URL(event.senderFrame.url).origin;
+    } catch {
+      throw new Error('Update request came from an invalid renderer');
+    }
+    if (senderOrigin !== trustedRendererOrigin) {
+      throw new Error('Update request came from an untrusted renderer');
+    }
+    if (!updater) throw new Error('In-app update is not available');
+
+    const result = await updater.apply();
+    if (result.handedOff) setTimeout(() => app.quit(), 750);
+    return result;
   });
 
   createApplicationMenu();
@@ -172,5 +191,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  ipcMain.removeHandler('app-update');
   if (localServer) localServer.close().catch((error) => console.error('Could not stop local server:', error));
 });

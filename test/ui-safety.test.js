@@ -27,8 +27,8 @@ test('UI shows app version, update availability, and Bersaglio copyright', () =>
   assert.match(indexHtml, /id="update-button"/);
   assert.match(indexHtml, /Bersaglio/);
   assert.match(appJs, /fetch\('\/api\/app-info'/);
-  assert.match(appJs, /fetch\('\/api\/app-update'/);
-  assert.match(appJs, /X-Update-Token/);
+  assert.match(appJs, /window\.portManager\.applyUpdate\(\)/);
+  assert.doesNotMatch(appJs, /\/api\/app-update|X-Update-Token|appUpdateToken/);
   assert.match(styleCss, /\.app-footer/);
   assert.match(styleCss, /\.update-status\.available/);
 });
