@@ -92,8 +92,18 @@ npm run package:mac
 ```
 
 Artifacts are written to `dist/` as a `.dmg` and `.zip` for the current Mac
-architecture. Local builds are unsigned; distribute outside your Mac only after
-Apple Developer signing and notarization.
+architecture. Free releases use a complete ad-hoc bundle signature so macOS can
+verify that the app bundle is intact, but they are not Apple-notarized.
+
+For the first launch of an ad-hoc release:
+
+1. Drag **Port Manager** from the DMG into **Applications**.
+2. In Finder, right-click **Port Manager** and choose **Open**.
+3. Choose **Open** again in the macOS confirmation dialog.
+
+After the first approval, normal double-click launching works. Fully transparent
+first-launch distribution still requires an Apple Developer ID signature and
+Apple notarization.
 
 ### Update from GitHub `main`
 
