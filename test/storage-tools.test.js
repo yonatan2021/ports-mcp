@@ -59,7 +59,7 @@ test('getCacheDetails categorizes folders and calculates sizes with mocked homeD
   await fs.mkdir(cacheDir, { recursive: true });
 
   // Create simulated directories
-  await fs.mkdir(path.join(homeDir, '.npm'), { recursive: true });
+  await fs.mkdir(path.join(homeDir, '.npm', '_cacache'), { recursive: true });
   await fs.mkdir(path.join(homeDir, '.bun', 'install', 'cache'), { recursive: true });
   await fs.mkdir(path.join(cacheDir, 'com.apple.Safari'), { recursive: true });
   await fs.mkdir(path.join(cacheDir, 'Yarn'), { recursive: true });
@@ -114,7 +114,7 @@ test('getCacheDetails invokes safetyLayer.checkCachePath and filters out blocked
   await fs.mkdir(cwd, { recursive: true });
   await fs.mkdir(cacheDir, { recursive: true });
 
-  await fs.mkdir(path.join(homeDir, '.npm'), { recursive: true });
+  await fs.mkdir(path.join(homeDir, '.npm', '_cacache'), { recursive: true });
   await fs.mkdir(path.join(cacheDir, 'badFolder'), { recursive: true });
 
   const runner = {
@@ -159,7 +159,7 @@ test('getCacheDetails returns items with bytes: 0 when du command fails', async 
   await fs.mkdir(cwd, { recursive: true });
   await fs.mkdir(cacheDir, { recursive: true });
 
-  await fs.mkdir(path.join(homeDir, '.npm'), { recursive: true });
+  await fs.mkdir(path.join(homeDir, '.npm', '_cacache'), { recursive: true });
 
   const runner = {
     execFile: async (file, args) => {
@@ -195,8 +195,9 @@ test('trashCachePath executes osascript Finder delete when confirm is true', asy
     }
   };
   
-  const targetPath = path.join(os.homedir(), '.npm');
-  const service = createPortService({ runner });
+  const mockHome = '/Users/nonexistent-test-user-home';
+  const targetPath = path.join(mockHome, '.npm', '_cacache');
+  const service = createPortService({ runner, homeDir: mockHome });
   const result = await service.trashCachePath({
     path: targetPath,
     confirm: true
@@ -214,8 +215,9 @@ test('trashCachePath returns dryRun object when confirm is false', async () => {
     }
   };
   
-  const targetPath = path.join(os.homedir(), '.npm');
-  const service = createPortService({ runner });
+  const mockHome = '/Users/nonexistent-test-user-home';
+  const targetPath = path.join(mockHome, '.npm', '_cacache');
+  const service = createPortService({ runner, homeDir: mockHome });
   const result = await service.trashCachePath({
     path: targetPath,
     confirm: false
@@ -281,9 +283,10 @@ test('trashCachePath batch trashing executes Finder delete for all paths when co
     }
   };
   
-  const path1 = path.join(os.homedir(), '.npm');
-  const path2 = path.join(os.homedir(), '.bun');
-  const service = createPortService({ runner });
+  const mockHome = '/Users/nonexistent-test-user-home';
+  const path1 = path.join(mockHome, '.npm', '_cacache');
+  const path2 = path.join(mockHome, '.bun');
+  const service = createPortService({ runner, homeDir: mockHome });
   const result = await service.trashCachePath({
     paths: [path1, path2],
     confirm: true
@@ -301,7 +304,7 @@ test('trashCachePath batch returns dryRun object when confirm is false', async (
     }
   };
   
-  const path1 = path.join(os.homedir(), '.npm');
+  const path1 = path.join(os.homedir(), '.npm', '_cacache');
   const path2 = path.join(os.homedir(), '.bun');
   const service = createPortService({ runner });
   const result = await service.trashCachePath({
@@ -313,7 +316,7 @@ test('trashCachePath batch returns dryRun object when confirm is false', async (
 });
 
 test('trashCachePath throws ACTIVE_PROCESS_LOCK 409 PortManagerError when active port process contains target path in commandLine', async () => {
-  const targetPath = path.join(os.homedir(), '.npm');
+  const targetPath = path.join(os.homedir(), '.npm', '_cacache');
   const activeProcess = {
     port: 8080,
     pid: 1234,

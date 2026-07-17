@@ -489,7 +489,7 @@ function createPortService(options = {}) {
   async function getCacheDetails() {
     const cacheDir = options.cacheDir || path.join(homeDir, 'Library', 'Caches');
     const globalCaches = [
-      { name: 'npm Cache', path: path.join(homeDir, '.npm'), description: 'npm package manager download cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'npm Cache', path: path.join(homeDir, '.npm', '_cacache'), description: 'npm package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'Yarn Cache', path: path.join(cacheDir, 'Yarn'), description: 'Yarn package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'pnpm Cache', path: path.join(cacheDir, 'pnpm'), description: 'pnpm package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'Bun Cache', path: path.join(homeDir, '.bun', 'install', 'cache'), description: 'Bun package installation cache', category: 'SAFE_TO_CLEAR' },

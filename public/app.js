@@ -13,6 +13,11 @@ let destructiveActionContext = null;
 let appUpdateReleaseUrl = null;
 let cacheItemsData = [];
 let appUpdateSupported = false;
+
+// Cache state variables
+let activeCacheFilter = 'all'; // 'all', 'SAFE_TO_CLEAR', 'NEEDS_CONFIRMATION', 'SYSTEM_PROTECTED'
+let cacheSizeFilterVal = 'all'; // 'all', '100mb', '1gb'
+let cacheSearchQuery = '';
 const POLL_INTERVAL = 8000; // 8 seconds
 const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
 
@@ -89,22 +94,39 @@ const elements = {
   emptyState: document.getElementById('empty-state'),
   toastContainer: document.getElementById('toast-container'),
   
-  // Metrics
-  metricActiveCount: document.getElementById('metric-active-count'),
-  metricUserCount: document.getElementById('metric-user-count'),
-  metricSystemCount: document.getElementById('metric-system-count'),
-  
-  // Metrics CPU/Memory
-  metricCpuUsage: document.getElementById('metric-cpu-usage'),
-  metricCpuDetail: document.getElementById('metric-cpu-detail'),
-  cpuBar: document.getElementById('cpu-bar'),
-  metricMemoryUsage: document.getElementById('metric-memory-usage'),
-  metricMemoryDetail: document.getElementById('metric-memory-detail'),
-  memoryBar: document.getElementById('memory-bar'),
-  metricDiskUsage: document.getElementById('metric-disk-usage'),
-  metricDiskDetail: document.getElementById('metric-disk-detail'),
-  metricCacheUsage: document.getElementById('metric-cache-usage'),
-  metricCacheDetail: document.getElementById('metric-cache-detail'),
+  // Info Hub Modal Selectors
+  infoModal: document.getElementById('info-modal'),
+  infoCloseBtn: document.getElementById('info-close-btn'),
+  infoOkBtn: document.getElementById('info-ok-btn'),
+  infoTriggerBtn: document.getElementById('info-trigger-btn'),
+  globalSearchInput: document.getElementById('global-search-input'),
+
+  // Navigation tab inline badges
+  tabBadgePorts: document.getElementById('tab-badge-ports'),
+  tabBadgeCache: document.getElementById('metric-cache-usage'),
+
+  // Persistent System Status Bar elements
+  statusRingCpu: document.getElementById('status-ring-cpu'),
+  statusTextCpu: document.getElementById('metric-cpu-usage'),
+  statusRingMemory: document.getElementById('status-ring-memory'),
+  statusTextMemory: document.getElementById('metric-memory-usage'),
+  statusTextDisk: document.getElementById('metric-disk-usage'),
+  statusTextConnections: document.getElementById('status-text-connections'),
+
+  // Legacy elements redirect (keeps app compatibility)
+  metricActiveCount: document.getElementById('status-text-connections') || document.createElement('div'),
+  metricUserCount: document.createElement('div'), // dummy
+  metricSystemCount: document.createElement('div'), // dummy
+  metricCpuUsage: document.getElementById('metric-cpu-usage') || document.createElement('div'),
+  metricCpuDetail: document.createElement('div'), // dummy
+  cpuBar: document.createElement('div'), // dummy
+  metricMemoryUsage: document.getElementById('metric-memory-usage') || document.createElement('div'),
+  metricMemoryDetail: document.createElement('div'), // dummy
+  memoryBar: document.createElement('div'), // dummy
+  metricDiskUsage: document.getElementById('metric-disk-usage') || document.createElement('div'),
+  metricDiskDetail: document.createElement('div'), // dummy
+  metricCacheUsage: document.createElement('div'), // handled directly
+
   cacheFindings: document.getElementById('cache-findings'),
   storageRefreshBtn: document.getElementById('storage-refresh-btn'),
   resultsCount: document.getElementById('results-count'),
@@ -150,19 +172,54 @@ const elements = {
   specSource: document.getElementById('spec-source'),
   specProtocol: document.getElementById('spec-protocol'),
   specType: document.getElementById('spec-type'),
-  specCommand: document.getElementById('spec-command')
+  specCommand: document.getElementById('spec-command'),
+
+  // Sidebar Tabs & Views
+  tabBtnPorts: document.getElementById('tab-btn-ports'),
+  tabBtnCache: document.getElementById('tab-btn-cache'),
+  viewPorts: document.getElementById('view-ports'),
+  viewCache: document.getElementById('view-cache'),
+
+  // Cache Advanced Filters
+  cacheSearchInput: document.getElementById('cache-search-input'),
+  cacheSizeFilter: document.getElementById('cache-size-filter'),
+  cacheFilterTabs: document.querySelectorAll('.cache-filter-tab'),
+  cacheResultsCount: document.getElementById('cache-results-count'),
+  cacheEmptyState: document.getElementById('cache-empty-state')
 };
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   fetchAppInfo();
-  fetchPorts();
-  startPolling();
   updateSystemUsage();
   startSystemUsagePolling();
-  updateStorageUsage();
+
+  const savedTab = localStorage.getItem('activeTab') || 'ports';
+  switchTab(savedTab);
 });
+
+function switchTab(tabId) {
+  if (tabId === 'ports') {
+    if (elements.tabBtnPorts) elements.tabBtnPorts.classList.add('active');
+    if (elements.tabBtnCache) elements.tabBtnCache.classList.remove('active');
+    if (elements.viewPorts) elements.viewPorts.classList.remove('hidden');
+    if (elements.viewCache) elements.viewCache.classList.add('hidden');
+
+    localStorage.setItem('activeTab', 'ports');
+    fetchPorts();
+    startPolling();
+  } else if (tabId === 'cache') {
+    if (elements.tabBtnPorts) elements.tabBtnPorts.classList.remove('active');
+    if (elements.tabBtnCache) elements.tabBtnCache.classList.add('active');
+    if (elements.viewPorts) elements.viewPorts.classList.add('hidden');
+    if (elements.viewCache) elements.viewCache.classList.remove('hidden');
+
+    localStorage.setItem('activeTab', 'cache');
+    stopPolling();
+    updateStorageUsage();
+  }
+}
 
 async function fetchAppInfo() {
   if (elements.copyrightYear) {
@@ -228,11 +285,62 @@ function setupEventListeners() {
   });
   elements.storageRefreshBtn.addEventListener('click', updateStorageUsage);
 
+  // Sidebar Tabs
+  if (elements.tabBtnPorts) {
+    elements.tabBtnPorts.addEventListener('click', () => switchTab('ports'));
+  }
+  if (elements.tabBtnCache) {
+    elements.tabBtnCache.addEventListener('click', () => switchTab('cache'));
+  }
+
+  // Global Search input
+  if (elements.globalSearchInput) {
+    elements.globalSearchInput.addEventListener('input', (e) => {
+      const val = e.target.value.toLowerCase().trim();
+      searchQuery = val;
+      cacheSearchQuery = val;
+      if (elements.searchInput) elements.searchInput.value = e.target.value;
+      if (elements.cacheSearchInput) elements.cacheSearchInput.value = e.target.value;
+      applyFilters();
+      filterAndRenderCache();
+    });
+  }
+
   // Search input
   elements.searchInput.addEventListener('input', (e) => {
     searchQuery = e.target.value.toLowerCase().trim();
+    if (elements.globalSearchInput) elements.globalSearchInput.value = e.target.value;
     applyFilters();
   });
+
+  // Cache Search input
+  if (elements.cacheSearchInput) {
+    elements.cacheSearchInput.addEventListener('input', (e) => {
+      cacheSearchQuery = e.target.value.toLowerCase().trim();
+      if (elements.globalSearchInput) elements.globalSearchInput.value = e.target.value;
+      filterAndRenderCache();
+    });
+  }
+
+  // Cache Size select filter
+  if (elements.cacheSizeFilter) {
+    elements.cacheSizeFilter.addEventListener('change', (e) => {
+      cacheSizeFilterVal = e.target.value;
+      filterAndRenderCache();
+    });
+  }
+
+  // Cache Safety filter tabs
+  if (elements.cacheFilterTabs) {
+    elements.cacheFilterTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        elements.cacheFilterTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        activeCacheFilter = tab.dataset.filter;
+        filterAndRenderCache();
+      });
+    });
+  }
 
   // Filter tabs
   elements.filterTabs.forEach(tab => {
@@ -301,6 +409,27 @@ function setupEventListeners() {
           updateStorageUsage();
         }
       }
+    });
+  }
+
+  // Info Hub Modal
+  if (elements.infoTriggerBtn) {
+    elements.infoTriggerBtn.addEventListener('click', () => {
+      elements.infoModal.classList.remove('hidden');
+    });
+  }
+  const closeInfoModal = () => {
+    elements.infoModal.classList.add('hidden');
+  };
+  if (elements.infoCloseBtn) {
+    elements.infoCloseBtn.addEventListener('click', closeInfoModal);
+  }
+  if (elements.infoOkBtn) {
+    elements.infoOkBtn.addEventListener('click', closeInfoModal);
+  }
+  if (elements.infoModal) {
+    elements.infoModal.addEventListener('click', (e) => {
+      if (e.target === elements.infoModal) closeInfoModal();
     });
   }
 
@@ -628,6 +757,33 @@ function updateMetrics() {
   const userCount = uniquePorts.filter(p => !p.isSystem).length;
   const systemCount = uniquePorts.filter(p => p.isSystem).length;
 
+  if (elements.statusTextConnections) {
+    elements.statusTextConnections.textContent = activeCount;
+  }
+  
+  if (elements.tabBadgePorts) {
+    elements.tabBadgePorts.textContent = activeCount;
+    if (activeCount > 0) {
+      elements.tabBadgePorts.classList.remove('hidden');
+    } else {
+      elements.tabBadgePorts.classList.add('hidden');
+    }
+  }
+
+  // Update filter tab labels with inline counts
+  elements.filterTabs.forEach(tab => {
+    const filter = tab.dataset.filter;
+    if (filter === 'all') {
+      tab.textContent = `הכול (${activeCount})`;
+    } else if (filter === 'user') {
+      tab.textContent = `האפליקציות שלי (${userCount})`;
+    } else if (filter === 'system') {
+      tab.textContent = `macOS (${systemCount})`;
+    } else if (filter === 'system-resources') {
+      tab.textContent = `כל התהליכים`;
+    }
+  });
+
   elements.metricActiveCount.textContent = activeCount;
   elements.metricUserCount.textContent = userCount;
   elements.metricSystemCount.textContent = systemCount;
@@ -950,6 +1106,12 @@ function renderTable() {
 function openConfirmModal(action, portObj) {
   stopPolling();
   
+  // Show standard process preview and warning
+  const modalWarning = document.getElementById('modal-warning');
+  const previewBox = document.querySelector('.process-preview-box');
+  if (modalWarning) modalWarning.style.display = 'block';
+  if (previewBox) previewBox.style.display = 'block';
+
   // Clean elements
   elements.previewPort.textContent = portObj.port !== undefined ? portObj.port : '-';
   elements.previewProcess.textContent = portObj.processName;
@@ -1087,6 +1249,24 @@ async function executeKill(pid, port) {
   }
 }
 
+function updateProgressRing(circleElement, percentage) {
+  if (!circleElement) return;
+  const radius = circleElement.r.baseVal.value;
+  const circumference = 2 * Math.PI * radius;
+  circleElement.style.strokeDasharray = `${circumference} ${circumference}`;
+  const offset = circumference - (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
+  circleElement.style.strokeDashoffset = offset;
+  
+  // Update progress color based on usage
+  if (percentage > 80) {
+    circleElement.style.stroke = '#ff4b4b'; // Rose Red
+  } else if (percentage > 50) {
+    circleElement.style.stroke = '#f59e0b'; // Amber
+  } else {
+    circleElement.style.stroke = 'var(--color-primary)'; // Ice Cyan
+  }
+}
+
 async function updateSystemUsage() {
   try {
     const res = await fetch('/api/system/usage');
@@ -1094,29 +1274,26 @@ async function updateSystemUsage() {
     const data = await res.json();
     
     // Update metric display
+    if (elements.statusTextCpu) {
+      elements.statusTextCpu.textContent = `${data.cpu.toFixed(1)}%`;
+    }
+    updateProgressRing(elements.statusRingCpu, data.cpu);
+    
+    if (elements.statusTextMemory) {
+      const usedGb = (data.memory.usedBytes / (1024 ** 3)).toFixed(1);
+      const totalGb = (data.memory.totalBytes / (1024 ** 3)).toFixed(0);
+      elements.statusTextMemory.textContent = `${usedGb}/${totalGb} GB`;
+    }
+    updateProgressRing(elements.statusRingMemory, data.memory.percentage);
+
+    // Keep compatibility for any other modules
     if (elements.metricCpuUsage) {
       elements.metricCpuUsage.textContent = `${data.cpu}%`;
     }
-    if (elements.metricCpuDetail) {
-      elements.metricCpuDetail.textContent = getUsageLabel(data.cpu, 'CPU');
-    }
-    if (elements.cpuBar) {
-      elements.cpuBar.style.width = `${data.cpu}%`;
-      elements.cpuBar.style.backgroundColor = data.cpu > 80 ? '#ff4b4b' : data.cpu > 50 ? '#ffc107' : '#00e676';
-    }
-    
     if (elements.metricMemoryUsage) {
       const usedGb = (data.memory.usedBytes / (1024 ** 3)).toFixed(2);
       const totalGb = (data.memory.totalBytes / (1024 ** 3)).toFixed(2);
       elements.metricMemoryUsage.textContent = `${usedGb} מתוך ${totalGb} GB`;
-    }
-    if (elements.metricMemoryDetail) {
-      elements.metricMemoryDetail.textContent = `${data.memory.percentage}% בשימוש — ${getUsageLabel(data.memory.percentage, 'זיכרון')}`;
-    }
-    
-    if (elements.memoryBar) {
-      elements.memoryBar.style.width = `${data.memory.percentage}%`;
-      elements.memoryBar.style.backgroundColor = data.memory.percentage > 85 ? '#ff4b4b' : data.memory.percentage > 70 ? '#ffc107' : '#00e676';
     }
 
     // Check if banner should be displayed
@@ -1188,6 +1365,12 @@ async function executeTrashCachesBatch(paths) {
 function openCacheConfirmModal(cacheItem) {
   stopPolling();
   
+  // Hide process preview and process termination warnings
+  const modalWarning = document.getElementById('modal-warning');
+  const previewBox = document.querySelector('.process-preview-box');
+  if (modalWarning) modalWarning.style.display = 'none';
+  if (previewBox) previewBox.style.display = 'none';
+
   // Clean / prepare elements
   elements.previewPort.textContent = '-';
   elements.previewProcess.textContent = cacheItem.name;
@@ -1279,11 +1462,16 @@ async function updateStorageUsage() {
     if (!storageRes.ok) throw new Error('Storage metrics unavailable');
     const { disk } = await storageRes.json();
 
-    elements.metricDiskUsage.textContent = `${disk.percentage}% בשימוש`;
-    elements.metricDiskDetail.textContent = `${formatBytes(disk.availableBytes)} פנויים מתוך ${formatBytes(disk.totalBytes)}`;
-    const diskBar = document.getElementById('disk-bar');
-    if (diskBar) {
-      diskBar.style.width = `${disk.percentage}%`;
+    if (elements.statusTextDisk) {
+      elements.statusTextDisk.textContent = `${formatBytes(disk.availableBytes)}`;
+    }
+
+    // Keep compatibility
+    if (elements.metricDiskUsage) {
+      elements.metricDiskUsage.textContent = `${disk.percentage}% בשימוש`;
+    }
+    if (elements.metricDiskDetail) {
+      elements.metricDiskDetail.textContent = `${formatBytes(disk.availableBytes)} פנויים מתוך ${formatBytes(disk.totalBytes)}`;
     }
 
     const cacheRes = await fetch('/api/system/cache');
@@ -1295,85 +1483,25 @@ async function updateStorageUsage() {
     const totalBytes = cacheItems.reduce((acc, item) => acc + (item.bytes || 0), 0);
     const scannedItems = cacheItems.length;
 
-    elements.metricCacheUsage.textContent = formatCacheBytes(totalBytes);
-    elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות — אין מחיקה אוטומטית`;
+    // Update new elements
+    if (elements.tabBadgeCache) {
+      const sizeText = formatCacheBytes(totalBytes);
+      elements.tabBadgeCache.textContent = sizeText;
+      if (totalBytes > 0) {
+        elements.tabBadgeCache.classList.remove('hidden');
+      } else {
+        elements.tabBadgeCache.classList.add('hidden');
+      }
+    }
+
+    if (elements.metricCacheUsage) {
+      elements.metricCacheUsage.textContent = formatCacheBytes(totalBytes);
+    }
+    if (elements.metricCacheDetail) {
+      elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות — אין מחיקה אוטומטית`;
+    }
     
-    elements.cacheFindings.replaceChildren();
-
-    if (cacheItems.length === 0) {
-      elements.cacheFindings.textContent = 'לא נמצאו תיקיות Cache שניתן לקרוא.';
-      const quickCleanBtn = document.getElementById('quick-clean-cache-btn');
-      if (quickCleanBtn) quickCleanBtn.classList.add('hidden');
-      return;
-    }
-
-    const categoryOrder = { SAFE_TO_CLEAR: 1, NEEDS_CONFIRMATION: 2, SYSTEM_PROTECTED: 3 };
-    cacheItems.sort((a, b) => (categoryOrder[a.category] || 99) - (categoryOrder[b.category] || 99));
-
-    const hasSafeToClear = cacheItems.some(item => item.category === 'SAFE_TO_CLEAR');
-    const quickCleanBtn = document.getElementById('quick-clean-cache-btn');
-    if (quickCleanBtn) {
-      if (hasSafeToClear) {
-        quickCleanBtn.classList.remove('hidden');
-      } else {
-        quickCleanBtn.classList.add('hidden');
-      }
-    }
-
-    cacheItems.forEach(item => {
-      const row = document.createElement('div');
-      row.className = 'cache-item-row';
-
-      let badgeHtml = '';
-      if (item.category === 'SAFE_TO_CLEAR') {
-        badgeHtml = `<span class="cache-badge cache-badge-safe">בטוח לניקוי</span>`;
-      } else if (item.category === 'NEEDS_CONFIRMATION') {
-        badgeHtml = `<span class="cache-badge cache-badge-caution">נדרש אישור</span>`;
-      } else {
-        badgeHtml = `<span class="cache-badge" style="background: rgba(156, 163, 175, 0.1); color: var(--text-secondary);">מוגן מערכת</span>`;
-      }
-
-      const isSystemProtected = item.category === 'SYSTEM_PROTECTED';
-      const actionIcon = isSystemProtected
-        ? `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`
-        : `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
-      
-      const buttonTitle = isSystemProtected
-        ? 'תיקייה זו מוגנת על ידי המערכת ולא ניתן לנקות אותה'
-        : `נקה את ${item.name}`;
-
-      row.innerHTML = `
-        <div class="cache-item-info">
-          <div class="cache-item-header">
-            <strong class="cache-item-name">${escapeHtml(item.name)}</strong>
-            ${badgeHtml}
-          </div>
-          <span class="cache-item-desc">${escapeHtml(item.description || '')}</span>
-          <code dir="ltr" class="cache-item-path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <strong style="font-size: 0.850rem; white-space: nowrap;">${formatCacheBytes(item.bytes)}</strong>
-        </div>
-      `;
-
-      const actionButton = document.createElement('button');
-      actionButton.className = 'btn-trash-action';
-      actionButton.title = buttonTitle;
-      actionButton.setAttribute('aria-label', buttonTitle);
-      if (isSystemProtected) {
-        actionButton.disabled = true;
-      }
-      actionButton.innerHTML = actionIcon;
-
-      if (!isSystemProtected) {
-        actionButton.addEventListener('click', () => {
-          openCacheConfirmModal(item);
-        });
-      }
-
-      row.querySelector('div:last-child').appendChild(actionButton);
-      elements.cacheFindings.appendChild(row);
-    });
+    filterAndRenderCache();
 
   } catch (err) {
     console.warn('Failed to update storage/cache metrics:', err);
@@ -1381,6 +1509,119 @@ async function updateStorageUsage() {
   } finally {
     elements.storageRefreshBtn.disabled = false;
   }
+}
+
+function filterAndRenderCache() {
+  let items = cacheItemsData || [];
+
+  // 1. Search Query filter
+  if (cacheSearchQuery) {
+    items = items.filter(item => 
+      item.name.toLowerCase().includes(cacheSearchQuery) || 
+      item.path.toLowerCase().includes(cacheSearchQuery)
+    );
+  }
+
+  // 2. Safety category filter
+  if (activeCacheFilter !== 'all') {
+    items = items.filter(item => item.category === activeCacheFilter);
+  }
+
+  // 3. Size filter
+  if (cacheSizeFilterVal === '100mb') {
+    items = items.filter(item => (item.bytes || 0) >= 100 * 1024 * 1024);
+  } else if (cacheSizeFilterVal === '1gb') {
+    items = items.filter(item => (item.bytes || 0) >= 1024 * 1024 * 1024);
+  }
+
+  // Update Cache results count
+  if (elements.cacheResultsCount) {
+    const totalFilteredBytes = items.reduce((acc, item) => acc + (item.bytes || 0), 0);
+    elements.cacheResultsCount.textContent = `נמצאו ${items.length} תיקיות (${formatCacheBytes(totalFilteredBytes)})`;
+  }
+
+  // Clear findings container
+  elements.cacheFindings.replaceChildren();
+
+  if (items.length === 0) {
+    if (elements.cacheEmptyState) elements.cacheEmptyState.classList.remove('hidden');
+    const quickCleanBtn = document.getElementById('quick-clean-cache-btn');
+    if (quickCleanBtn) quickCleanBtn.classList.add('hidden');
+    return;
+  }
+
+  if (elements.cacheEmptyState) elements.cacheEmptyState.classList.add('hidden');
+
+  // Quick Clean button visibility
+  const hasSafeToClear = items.some(item => item.category === 'SAFE_TO_CLEAR');
+  const quickCleanBtn = document.getElementById('quick-clean-cache-btn');
+  if (quickCleanBtn) {
+    if (hasSafeToClear) {
+      quickCleanBtn.classList.remove('hidden');
+    } else {
+      quickCleanBtn.classList.add('hidden');
+    }
+  }
+
+  // Sort: category order
+  const categoryOrder = { SAFE_TO_CLEAR: 1, NEEDS_CONFIRMATION: 2, SYSTEM_PROTECTED: 3 };
+  items.sort((a, b) => (categoryOrder[a.category] || 99) - (categoryOrder[b.category] || 99));
+
+  // Render items
+  items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'cache-item-row';
+
+    let badgeHtml = '';
+    if (item.category === 'SAFE_TO_CLEAR') {
+      badgeHtml = `<span class="cache-badge cache-badge-safe">בטוח לניקוי</span>`;
+    } else if (item.category === 'NEEDS_CONFIRMATION') {
+      badgeHtml = `<span class="cache-badge cache-badge-caution">נדרש אישור</span>`;
+    } else {
+      badgeHtml = `<span class="cache-badge" style="background: rgba(156, 163, 175, 0.1); color: var(--text-secondary);">מוגן מערכת</span>`;
+    }
+
+    const isSystemProtected = item.category === 'SYSTEM_PROTECTED';
+    const actionIcon = isSystemProtected
+      ? `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`
+      : `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
+    
+    const buttonTitle = isSystemProtected
+      ? 'תיקייה זו מוגנת על ידי המערכת ולא ניתן לנקות אותה'
+      : `נקה את ${item.name}`;
+
+    row.innerHTML = `
+      <div class="cache-item-info">
+        <div class="cache-item-header">
+          <strong class="cache-item-name">${escapeHtml(item.name)}</strong>
+          ${badgeHtml}
+        </div>
+        <span class="cache-item-desc">${escapeHtml(item.description || '')}</span>
+        <code dir="ltr" class="cache-item-path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <strong style="font-size: 0.850rem; white-space: nowrap;">${formatCacheBytes(item.bytes)}</strong>
+      </div>
+    `;
+
+    const actionButton = document.createElement('button');
+    actionButton.className = 'btn-trash-action';
+    actionButton.title = buttonTitle;
+    actionButton.setAttribute('aria-label', buttonTitle);
+    if (isSystemProtected) {
+      actionButton.disabled = true;
+    }
+    actionButton.innerHTML = actionIcon;
+
+    if (!isSystemProtected) {
+      actionButton.addEventListener('click', () => {
+        openCacheConfirmModal(item);
+      });
+    }
+
+    row.querySelector('div:last-child').appendChild(actionButton);
+    elements.cacheFindings.appendChild(row);
+  });
 }
 
 async function renderWarningBanner(usage) {

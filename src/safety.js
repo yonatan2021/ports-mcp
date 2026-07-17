@@ -335,7 +335,7 @@ class SafetyLayer {
     }
 
     const allowedPatterns = [
-      /\/\.npm$/,
+      /\/\.npm(\/_cacache)?$/,
       /\/Library\/Caches\/.+/,
       /\/\.bun\/install\/cache$/,
       /\/\.next\/cache$/,
