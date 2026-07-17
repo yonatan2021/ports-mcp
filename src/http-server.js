@@ -160,6 +160,28 @@ function createApp({
     }
   });
 
+  app.get('/api/system/cache', async (_req, res) => {
+    try {
+      const caches = await service.getCacheDetails();
+      res.json({ items: caches });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.post('/api/system/cache/trash', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const result = await service.trashCachePath({
+        path: body.path,
+        confirm: body.confirm
+      });
+      res.json(result);
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   app.post('/api/system/suspend', async (req, res) => {
     try {
       const body = req.body || {};
