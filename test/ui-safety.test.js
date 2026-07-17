@@ -218,3 +218,19 @@ test('port view shows source path, listener scope, and grouped identical command
   assert.match(appJs, /function aggregatePorts/);
   assert.match(appJs, /סגירה מרוכזת אינה זמינה/);
 });
+
+test('UI supports interactive cache deletion, safety badge, and confirm modal logic', () => {
+  assert.match(indexHtml, /id="quick-clean-cache-btn"/);
+  assert.match(appJs, /fetch\(['"]\/api\/system\/cache['"]/);
+  assert.match(appJs, /fetch\(['"]\/api\/system\/cache\/trash['"]/);
+  assert.match(appJs, /function formatCacheBytes/);
+  assert.match(appJs, /function openCacheConfirmModal/);
+  assert.match(appJs, /cache-badge-safe/);
+  assert.match(appJs, /cache-badge-caution/);
+  assert.match(appJs, /btn-trash-action/);
+  assert.match(appJs, /'confirm-help'/);
+  assert.match(appJs, /\.style\.display = 'none'/);
+  assert.match(appJs, /\.style\.display = 'block'/);
+});
+
+

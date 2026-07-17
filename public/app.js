@@ -11,6 +11,7 @@ let pollIntervalId = null;
 let systemUsageIntervalId = null;
 let destructiveActionContext = null;
 let appUpdateReleaseUrl = null;
+let cacheItemsData = [];
 let appUpdateSupported = false;
 const POLL_INTERVAL = 8000; // 8 seconds
 const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
@@ -280,6 +281,32 @@ function setupEventListeners() {
   elements.confirmModal.addEventListener('click', (e) => {
     if (e.target === elements.confirmModal) closeConfirmModal();
   });
+
+  // Quick Clean Cache button
+  const quickCleanCacheBtn = document.getElementById('quick-clean-cache-btn');
+  if (quickCleanCacheBtn) {
+    quickCleanCacheBtn.addEventListener('click', async () => {
+      const safeItems = cacheItemsData.filter(item => item.category === 'SAFE_TO_CLEAR');
+      if (safeItems.length === 0) return;
+
+      const confirmMessage = `האם אתה בטוח שברצונך להעביר את כל (${safeItems.length}) תיקיות ה-Cache הבטוחות לניקוי לפח האשפה?\n` +
+        safeItems.map(item => `- ${item.name} (${formatCacheBytes(item.bytes)})`).join('\n');
+
+      if (confirm(confirmMessage)) {
+        quickCleanCacheBtn.disabled = true;
+        let successCount = 0;
+        for (const item of safeItems) {
+          const success = await executeTrashCacheSilent(item.path);
+          if (success) successCount++;
+        }
+        quickCleanCacheBtn.disabled = false;
+        if (successCount > 0) {
+          showToast(`הועברו בהצלחה ${successCount} תיקיות לפח האשפה!`, 'success');
+          updateStorageUsage();
+        }
+      }
+    });
+  }
 
   // Details Modal Close
   const closeDetailsModal = () => {
@@ -985,6 +1012,8 @@ function resetDestructiveConfirmation() {
   elements.confirmUnderstandCheckbox.checked = false;
   elements.confirmRequiredPid.textContent = '--';
   elements.modalConfirmBtn.disabled = true;
+  const confirmHelp = document.getElementById('confirm-help');
+  if (confirmHelp) confirmHelp.style.display = 'block';
 }
 
 function validateDestructiveConfirmation(portObj = null) {
@@ -1106,36 +1135,237 @@ async function updateSystemUsage() {
   }
 }
 
+function formatCacheBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(i < 2 ? 0 : 1)) + ' ' + sizes[i];
+}
+
+async function executeTrashCache(path) {
+  try {
+    const res = await fetch('/api/system/cache/trash', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, confirm: true })
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || data.error || 'שגיאה במחיקת התיקייה');
+    
+    showToast(`תיקיית ה-Cache בנתיב ${path} הועברה לפח האשפה בהצלחה!`, 'success');
+    return true;
+  } catch (err) {
+    showToast(err.message, 'error');
+    return false;
+  }
+}
+
+async function executeTrashCacheSilent(path) {
+  try {
+    const res = await fetch('/api/system/cache/trash', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, confirm: true })
+    });
+    const data = await res.json();
+    return res.ok && (data.ok || data.trashed);
+  } catch (err) {
+    console.error('Failed to trash cache path silent:', path, err);
+    return false;
+  }
+}
+
+function openCacheConfirmModal(cacheItem) {
+  stopPolling();
+  
+  // Clean / prepare elements
+  elements.previewPort.textContent = '-';
+  elements.previewProcess.textContent = cacheItem.name;
+  elements.previewPid.textContent = '-';
+  elements.previewCommand.textContent = cacheItem.path;
+
+  // Set context
+  destructiveActionContext = { action: 'trash-cache', path: cacheItem.path };
+  
+  // Hide confirm gate
+  const confirmHelp = document.getElementById('confirm-help');
+  if (confirmHelp) confirmHelp.style.display = 'none';
+
+  // Customize title, description & button
+  elements.modalTitle.textContent = 'אישור העברה לפח האשפה';
+  elements.modalDesc.innerHTML = `האם אתה בטוח שברצונך להעביר את תיקיית ה-Cache <strong>${escapeHtml(cacheItem.name)}</strong> בנתיב <code>${escapeHtml(cacheItem.path)}</code> לפח האשפה?`;
+  elements.modalConfirmBtn.textContent = 'העבר לאשפה (Trash)';
+  elements.modalConfirmBtn.className = 'btn btn-danger';
+  elements.modalConfirmBtn.disabled = false; // Enabled immediately for cache trashing!
+
+  elements.modalConfirmBtn.onclick = async () => {
+    elements.modalConfirmBtn.disabled = true;
+    elements.modalConfirmBtn.textContent = 'מעביר לפח האשפה...';
+    
+    const success = await executeTrashCache(cacheItem.path);
+    elements.confirmModal.classList.add('hidden');
+    
+    // Restore confirm-help display style
+    if (confirmHelp) confirmHelp.style.display = 'block';
+    resetDestructiveConfirmation();
+    
+    if (success) {
+      updateStorageUsage();
+    } else {
+      startPolling();
+    }
+  };
+
+  elements.confirmModal.classList.remove('hidden');
+}
+
 async function updateStorageUsage() {
   elements.storageRefreshBtn.disabled = true;
+  
+  // Show skeleton loader
+  if (!document.getElementById('skeleton-styles')) {
+    const style = document.createElement('style');
+    style.id = 'skeleton-styles';
+    style.textContent = `
+      @keyframes skeleton-pulse {
+        0% { opacity: 0.35; }
+        50% { opacity: 0.75; }
+        100% { opacity: 0.35; }
+      }
+      .skeleton-row {
+        animation: skeleton-pulse 1.5s infinite ease-in-out;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  elements.cacheFindings.innerHTML = `
+    <div class="cache-item-row skeleton-row" style="pointer-events: none; border-color: rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 8px;">
+      <div style="flex-grow: 1;">
+        <div style="background: rgba(255, 255, 255, 0.08); height: 16px; width: 120px; border-radius: 4px; margin-bottom: 8px;"></div>
+        <div style="background: rgba(255, 255, 255, 0.04); height: 12px; width: 220px; border-radius: 4px; margin-bottom: 6px;"></div>
+        <div style="background: rgba(255, 255, 255, 0.02); height: 10px; width: 160px; border-radius: 4px;"></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="background: rgba(255, 255, 255, 0.08); height: 14px; width: 50px; border-radius: 4px;"></div>
+        <div style="background: rgba(255, 255, 255, 0.04); height: 32px; width: 32px; border-radius: 4px;"></div>
+      </div>
+    </div>
+    <div class="cache-item-row skeleton-row" style="pointer-events: none; border-color: rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 8px;">
+      <div style="flex-grow: 1;">
+        <div style="background: rgba(255, 255, 255, 0.08); height: 16px; width: 90px; border-radius: 4px; margin-bottom: 8px;"></div>
+        <div style="background: rgba(255, 255, 255, 0.04); height: 12px; width: 180px; border-radius: 4px; margin-bottom: 6px;"></div>
+        <div style="background: rgba(255, 255, 255, 0.02); height: 10px; width: 130px; border-radius: 4px;"></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="background: rgba(255, 255, 255, 0.08); height: 14px; width: 45px; border-radius: 4px;"></div>
+        <div style="background: rgba(255, 255, 255, 0.04); height: 32px; width: 32px; border-radius: 4px;"></div>
+      </div>
+    </div>
+  `;
+
   try {
-    const res = await fetch('/api/system/storage');
-    if (!res.ok) throw new Error('Storage unavailable');
-    const { disk, cache } = await res.json();
+    const storageRes = await fetch('/api/system/storage');
+    if (!storageRes.ok) throw new Error('Storage metrics unavailable');
+    const { disk } = await storageRes.json();
 
     elements.metricDiskUsage.textContent = `${disk.percentage}% בשימוש`;
     elements.metricDiskDetail.textContent = `${formatBytes(disk.availableBytes)} פנויים מתוך ${formatBytes(disk.totalBytes)}`;
-    elements.metricCacheUsage.textContent = formatBytes(cache.knownBytes);
-    elements.metricCacheDetail.textContent = `${cache.scannedItems} תיקיות Cache קריאות — אין מחיקה אוטומטית`;
+
+    const cacheRes = await fetch('/api/system/cache');
+    if (!cacheRes.ok) throw new Error('Cache metrics unavailable');
+    const { items: cacheItems } = await cacheRes.json();
+
+    cacheItemsData = cacheItems;
+
+    const totalBytes = cacheItems.reduce((acc, item) => acc + (item.bytes || 0), 0);
+    const scannedItems = cacheItems.length;
+
+    elements.metricCacheUsage.textContent = formatCacheBytes(totalBytes);
+    elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות — אין מחיקה אוטומטית`;
+    
     elements.cacheFindings.replaceChildren();
 
-    if (cache.items.length === 0) {
+    if (cacheItems.length === 0) {
       elements.cacheFindings.textContent = 'לא נמצאו תיקיות Cache שניתן לקרוא.';
+      const quickCleanBtn = document.getElementById('quick-clean-cache-btn');
+      if (quickCleanBtn) quickCleanBtn.classList.add('hidden');
       return;
     }
 
-    cache.items.forEach(item => {
-      const finding = document.createElement('div');
-      finding.className = 'storage-finding';
-      const name = document.createElement('strong');
-      name.textContent = item.name;
-      const size = document.createElement('span');
-      size.textContent = formatBytes(item.bytes);
-      finding.append(name, size);
-      elements.cacheFindings.appendChild(finding);
+    const categoryOrder = { SAFE_TO_CLEAR: 1, NEEDS_CONFIRMATION: 2, SYSTEM_PROTECTED: 3 };
+    cacheItems.sort((a, b) => (categoryOrder[a.category] || 99) - (categoryOrder[b.category] || 99));
+
+    const hasSafeToClear = cacheItems.some(item => item.category === 'SAFE_TO_CLEAR');
+    const quickCleanBtn = document.getElementById('quick-clean-cache-btn');
+    if (quickCleanBtn) {
+      if (hasSafeToClear) {
+        quickCleanBtn.classList.remove('hidden');
+      } else {
+        quickCleanBtn.classList.add('hidden');
+      }
+    }
+
+    cacheItems.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'cache-item-row';
+
+      let badgeHtml = '';
+      if (item.category === 'SAFE_TO_CLEAR') {
+        badgeHtml = `<span class="cache-badge cache-badge-safe">בטוח לניקוי</span>`;
+      } else if (item.category === 'NEEDS_CONFIRMATION') {
+        badgeHtml = `<span class="cache-badge cache-badge-caution">נדרש אישור</span>`;
+      } else {
+        badgeHtml = `<span class="cache-badge" style="background: rgba(156, 163, 175, 0.1); color: var(--text-secondary);">מוגן מערכת</span>`;
+      }
+
+      const isSystemProtected = item.category === 'SYSTEM_PROTECTED';
+      const actionIcon = isSystemProtected
+        ? `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`
+        : `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
+      
+      const buttonTitle = isSystemProtected
+        ? 'תיקייה זו מוגנת על ידי המערכת ולא ניתן לנקות אותה'
+        : `נקה את ${item.name}`;
+
+      row.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <strong class="cache-item-name">${escapeHtml(item.name)}</strong>
+            ${badgeHtml}
+          </div>
+          <span class="metric-detail" style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.description || '')}</span>
+          <code dir="ltr" style="font-size: 0.75rem; color: var(--text-muted); text-align: left; align-self: flex-start;">${escapeHtml(item.path)}</code>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <strong>${formatCacheBytes(item.bytes)}</strong>
+        </div>
+      `;
+
+      const actionButton = document.createElement('button');
+      actionButton.className = 'btn-trash-action';
+      actionButton.title = buttonTitle;
+      actionButton.setAttribute('aria-label', buttonTitle);
+      if (isSystemProtected) {
+        actionButton.disabled = true;
+      }
+      actionButton.innerHTML = actionIcon;
+
+      if (!isSystemProtected) {
+        actionButton.addEventListener('click', () => {
+          openCacheConfirmModal(item);
+        });
+      }
+
+      row.querySelector('div:last-child').appendChild(actionButton);
+      elements.cacheFindings.appendChild(row);
     });
+
   } catch (err) {
-    console.warn('Failed to update storage metrics:', err);
+    console.warn('Failed to update storage/cache metrics:', err);
     elements.cacheFindings.textContent = 'לא ניתן לסרוק Cache כרגע.';
   } finally {
     elements.storageRefreshBtn.disabled = false;
@@ -1501,7 +1731,10 @@ function renderSimpleCards() {
     }
 
     const portNumber = Number(portObj.port);
-    const portText = (portObj.ports || [portObj.port]).join(', ');
+    const portsList = portObj.ports || [portObj.port];
+    const portText = portsList.length > 5
+      ? `${portsList.slice(0, 5).join(', ')} ועוד ${portsList.length - 5}`
+      : portsList.join(', ');
     const pidText = (portObj.pids || [portObj.pid]).join(', ');
     const isSelf = portNumber === selfPort;
     const isSystemProcess = portObj.isSystem === true;
