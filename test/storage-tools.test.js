@@ -179,3 +179,46 @@ test('getCacheDetails returns items with bytes: 0 when du command fails', async 
     await fs.rm(baseDir, { recursive: true, force: true });
   }
 });
+
+test('trashCachePath executes osascript Finder delete when confirm is true', async () => {
+  let ranAppleScript = false;
+  const runner = {
+    execFile: async (file, args) => {
+      if (file === 'osascript') {
+        assert.ok(args[1].includes('delete POSIX file'));
+        ranAppleScript = true;
+        return { stdout: '' };
+      }
+      return { stdout: '' };
+    }
+  };
+  
+  const targetPath = path.join(os.homedir(), '.npm');
+  const service = createPortService({ runner });
+  const result = await service.trashCachePath({
+    path: targetPath,
+    confirm: true
+  });
+  
+  assert.deepEqual(result, { ok: true, trashed: true, path: targetPath });
+  assert.ok(ranAppleScript);
+});
+
+test('trashCachePath returns dryRun object when confirm is false', async () => {
+  const runner = {
+    execFile: async () => {
+      throw new Error('should not execute shell commands on dry run');
+    }
+  };
+  
+  const targetPath = path.join(os.homedir(), '.npm');
+  const service = createPortService({ runner });
+  const result = await service.trashCachePath({
+    path: targetPath,
+    confirm: false
+  });
+  
+  assert.deepEqual(result, { dryRun: true, wouldTrash: targetPath });
+});
+
+

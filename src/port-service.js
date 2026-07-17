@@ -569,6 +569,32 @@ function createPortService(options = {}) {
     return items;
   }
 
+  async function trashCachePath({ path: targetPath, confirm = false }) {
+    if (safetyLayer) {
+      await safetyLayer.checkCachePath(targetPath);
+    }
+
+    if (confirm !== true) {
+      return { dryRun: true, wouldTrash: targetPath };
+    }
+
+    // Attempt Electron native trashing if running in Electron environment
+    try {
+      const { shell } = require('electron');
+      if (shell && typeof shell.trashItem === 'function') {
+        await shell.trashItem(targetPath);
+        return { ok: true, trashed: true, path: targetPath };
+      }
+    } catch {}
+
+    // Fallback to AppleScript for CLI / Web Server mode
+    const escapedPath = targetPath.replace(/(["\\])/g, '\\$1');
+    const appleScript = `tell application "Finder" to delete POSIX file "${escapedPath}"`;
+    
+    await runner.execFile('osascript', ['-e', appleScript]);
+    return { ok: true, trashed: true, path: targetPath };
+  }
+
   return {
     listPorts,
     findProcessByPort,
@@ -580,7 +606,8 @@ function createPortService(options = {}) {
     suspendProcess,
     resumeProcess,
     killProcess,
-    getCacheDetails
+    getCacheDetails,
+    trashCachePath
   };
 }
 
