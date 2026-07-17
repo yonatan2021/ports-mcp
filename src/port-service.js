@@ -571,7 +571,24 @@ function createPortService(options = {}) {
 
   async function trashCachePath({ path: targetPath, confirm = false }) {
     if (safetyLayer) {
-      await safetyLayer.checkCachePath(targetPath);
+      try {
+        await safetyLayer.checkCachePath(targetPath);
+      } catch (err) {
+        if (err.name === 'SafetyError') {
+          throw new PortManagerError(err.code || 'SAFETY_ERROR', err.message, { status: 403, details: err.details || {} });
+        }
+        throw err;
+      }
+
+      if (typeof safetyLayer.checkDestructive === 'function') {
+        const result = await safetyLayer.checkDestructive(
+          { user: safetyLayer.currentUser },
+          { confirm }
+        );
+        if (!result.ok) {
+          throw new PortManagerError(`SAFETY_${result.check.toUpperCase()}`, result.reason, { status: 403, details: result.details || {} });
+        }
+      }
     }
 
     if (confirm !== true) {

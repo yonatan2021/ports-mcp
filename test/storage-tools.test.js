@@ -4,6 +4,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createPortService } = require('../src/port-service');
+const { SafetyConfig } = require('../src/config');
+const { SafetyLayer } = require('../src/safety');
 
 test('getStorageUsage reports disk capacity and largest readable cache folders', async () => {
   const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-mcp-storage-'));
@@ -219,6 +221,47 @@ test('trashCachePath returns dryRun object when confirm is false', async () => {
   });
   
   assert.deepEqual(result, { dryRun: true, wouldTrash: targetPath });
+});
+
+test('trashCachePath throws PortManagerError (403 status) when path validation fails (path outside home)', async () => {
+  const safetyConfig = new SafetyConfig({ mode: 'blocklist' });
+  const safetyLayer = new SafetyLayer({ config: safetyConfig, currentUser: 'yoni' });
+  const service = createPortService({ safetyLayer });
+  const targetPath = '/System/Library/Caches';
+
+  await assert.rejects(
+    async () => {
+      await service.trashCachePath({ path: targetPath, confirm: true });
+    },
+    (err) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.name, 'PortManagerError');
+      assert.equal(err.status, 403);
+      assert.equal(err.code, 'PATH_OUTSIDE_HOME');
+      return true;
+    }
+  );
+});
+
+test('trashCachePath throws PortManagerError (403 status) when safety layer check fails (e.g. read-only mode)', async () => {
+  const safetyConfig = new SafetyConfig({ mode: 'read-only' });
+  const safetyLayer = new SafetyLayer({ config: safetyConfig, currentUser: 'yoni' });
+  const service = createPortService({ safetyLayer });
+  const targetPath = path.join(os.homedir(), 'Library', 'Caches', 'npm');
+
+  await assert.rejects(
+    async () => {
+      await service.trashCachePath({ path: targetPath, confirm: true });
+    },
+    (err) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.name, 'PortManagerError');
+      assert.equal(err.status, 403);
+      assert.equal(err.code, 'SAFETY_MODE');
+      assert.match(err.message, /read-only/);
+      return true;
+    }
+  );
 });
 
 
