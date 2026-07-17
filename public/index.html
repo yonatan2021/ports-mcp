@@ -142,25 +142,28 @@
           <div class="progress-bar-container"><div id="memory-bar" class="progress-bar" style="width: 0%"></div></div>
         </div>
       </div>
-    </section>
-
-    <section class="storage-section glass" aria-labelledby="storage-title">
-      <div class="storage-header">
-        <div><p class="eyebrow">מקום פנוי</p><h2 id="storage-title">אחסון וקבצים זמניים</h2></div>
-        <button id="storage-refresh-btn" class="btn btn-secondary" type="button">סריקה מחדש</button>
+      <div class="metric-card metric-health glass">
+        <div class="metric-icon system-icon">💽</div>
+        <div class="metric-content">
+          <h3>נפח דיסק</h3>
+          <p id="metric-disk-usage" class="metric-value">ממתין לסריקה</p>
+          <p id="metric-disk-detail" class="metric-detail">טוען...</p>
+          <div class="progress-bar-container"><div id="disk-bar" class="progress-bar" style="width: 0%"></div></div>
+        </div>
       </div>
-      <div class="storage-summary">
-        <div class="storage-metric"><span class="storage-icon">💽</span><div><h3>נפח דיסק</h3><p id="metric-disk-usage" class="storage-value">ממתין לסריקה</p><p id="metric-disk-detail" class="metric-detail"></p></div></div>
-        <div class="storage-metric"><span class="storage-icon">🧹</span><div><h3>Cache שזוהה</h3><p id="metric-cache-usage" class="storage-value">ממתין לסריקה</p><p id="metric-cache-detail" class="metric-detail">קריאה בלבד — אין מחיקה אוטומטית</p></div></div>
-      </div>
-      <div class="cache-control-header">
-        <button id="quick-clean-cache-btn" class="btn btn-success hidden" type="button">
-          <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          ניקוי קבצי פיתוח זמניים
-        </button>
-      </div>
-      <div id="cache-findings" class="storage-findings-grid" aria-live="polite">
-        <!-- Skeleton loader goes here during load -->
+      <div class="metric-card metric-health glass metric-cache-card">
+        <div class="metric-icon dev-icon">🧹</div>
+        <div class="metric-content" style="display: flex; flex-direction: column; justify-content: space-between; height: 100%; min-height: 80px; width: 100%;">
+          <div>
+            <h3>Cache שזוהה</h3>
+            <p id="metric-cache-usage" class="metric-value">ממתין לסריקה</p>
+            <p id="metric-cache-detail" class="metric-detail">טוען...</p>
+          </div>
+          <button id="quick-clean-cache-btn" class="btn btn-success btn-sm hidden" type="button" style="margin-top: 8px; width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 4px;">
+            <svg class="icon-svg" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            ניקוי ראש
+          </button>
+        </div>
       </div>
     </section>
 
@@ -251,6 +254,25 @@
         <p>נסה לנקות את תיבת החיפוש או לשנות מסננים.</p>
       </div>
     </main>
+
+    <!-- Cache Detailed Section -->
+    <details class="storage-section glass" style="margin-top: 24px; margin-bottom: 24px;">
+      <summary class="storage-header" style="cursor: pointer; list-style: none; outline: none; user-select: none;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg class="details-arrow" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" style="transition: transform 0.2s ease;">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <div>
+            <p class="eyebrow" style="margin: 0;">קבצים זמניים</p>
+            <h2 id="storage-title" style="margin: 0; display: inline-block; font-size: 1.15rem;">ניקוי קבצי Cache מפורט</h2>
+          </div>
+        </div>
+        <button id="storage-refresh-btn" class="btn btn-secondary btn-sm" type="button" onclick="event.stopPropagation();">סריקה מחדש</button>
+      </summary>
+      <div id="cache-findings" class="storage-findings-grid" aria-live="polite" style="margin-top: 16px;">
+        <!-- Skeleton loader goes here during load -->
+      </div>
+    </details>
 
     <footer class="app-footer" aria-label="גרסה וזכויות יוצרים">
       <p>© <span id="copyright-year"></span> Bersaglio. כל הזכויות שמורות.</p>

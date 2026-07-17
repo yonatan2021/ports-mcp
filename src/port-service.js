@@ -583,6 +583,14 @@ function createPortService(options = {}) {
       throw new PortManagerError('INVALID_ARGUMENT', 'No cache paths provided', { status: 400 });
     }
 
+    const activePorts = await listPorts();
+    for (const p of targetPaths) {
+      const activeProcess = activePorts.find(proc => proc.commandLine && proc.commandLine.includes(p));
+      if (activeProcess) {
+        throw new PortManagerError('ACTIVE_PROCESS_LOCK', `Cannot delete cache path "${p}" because it is currently in use by active process ${activeProcess.pid}.`, { status: 409 });
+      }
+    }
+
     if (safetyLayer) {
       for (const p of targetPaths) {
         try {

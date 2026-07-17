@@ -330,7 +330,7 @@ class SafetyLayer {
     const normalized = path.normalize(targetPath);
     const homeDir = os.homedir();
 
-    if (!normalized.startsWith(homeDir)) {
+    if (normalized !== homeDir && !normalized.startsWith(homeDir + path.sep)) {
       throw new SafetyError('PATH_OUTSIDE_HOME', `Path "${normalized}" is outside the user home directory.`);
     }
 

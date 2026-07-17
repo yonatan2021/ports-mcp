@@ -208,7 +208,8 @@ test('trashCachePath executes osascript Finder delete when confirm is true', asy
 
 test('trashCachePath returns dryRun object when confirm is false', async () => {
   const runner = {
-    execFile: async () => {
+    execFile: async (file) => {
+      if (file === 'lsof') return { stdout: '' };
       throw new Error('should not execute shell commands on dry run');
     }
   };
@@ -294,7 +295,8 @@ test('trashCachePath batch trashing executes Finder delete for all paths when co
 
 test('trashCachePath batch returns dryRun object when confirm is false', async () => {
   const runner = {
-    execFile: async () => {
+    execFile: async (file) => {
+      if (file === 'lsof') return { stdout: '' };
       throw new Error('should not execute shell commands on dry run');
     }
   };
@@ -309,5 +311,37 @@ test('trashCachePath batch returns dryRun object when confirm is false', async (
   
   assert.deepEqual(result, { dryRun: true, wouldTrash: [path1, path2] });
 });
+
+test('trashCachePath throws ACTIVE_PROCESS_LOCK 409 PortManagerError when active port process contains target path in commandLine', async () => {
+  const targetPath = path.join(os.homedir(), '.npm');
+  const activeProcess = {
+    port: 8080,
+    pid: 1234,
+    processName: 'node',
+    user: 'yoni',
+    type: 'IPv4',
+    protocol: 'TCP',
+    address: '*:8080',
+    commandLine: `node ${targetPath}/server.js`
+  };
+
+  const service = createPortService({
+    listPorts: async () => [activeProcess]
+  });
+
+  await assert.rejects(
+    async () => {
+      await service.trashCachePath({ path: targetPath, confirm: true });
+    },
+    (err) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err.name, 'PortManagerError');
+      assert.equal(err.status, 409);
+      assert.equal(err.code, 'ACTIVE_PROCESS_LOCK');
+      return true;
+    }
+  );
+});
+
 
 

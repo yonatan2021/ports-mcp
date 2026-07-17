@@ -1008,6 +1008,7 @@ function resetDestructiveConfirmation() {
   elements.confirmUnderstandCheckbox.checked = false;
   elements.confirmRequiredPid.textContent = '--';
   elements.modalConfirmBtn.disabled = true;
+  elements.modalConfirmBtn.onclick = null;
   const confirmHelp = document.getElementById('confirm-help');
   if (confirmHelp) confirmHelp.style.display = 'block';
 }
@@ -1280,6 +1281,10 @@ async function updateStorageUsage() {
 
     elements.metricDiskUsage.textContent = `${disk.percentage}% בשימוש`;
     elements.metricDiskDetail.textContent = `${formatBytes(disk.availableBytes)} פנויים מתוך ${formatBytes(disk.totalBytes)}`;
+    const diskBar = document.getElementById('disk-bar');
+    if (diskBar) {
+      diskBar.style.width = `${disk.percentage}%`;
+    }
 
     const cacheRes = await fetch('/api/system/cache');
     if (!cacheRes.ok) throw new Error('Cache metrics unavailable');
@@ -1338,16 +1343,16 @@ async function updateStorageUsage() {
         : `נקה את ${item.name}`;
 
       row.innerHTML = `
-        <div style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
-          <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="cache-item-info">
+          <div class="cache-item-header">
             <strong class="cache-item-name">${escapeHtml(item.name)}</strong>
             ${badgeHtml}
           </div>
-          <span class="metric-detail" style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(item.description || '')}</span>
-          <code dir="ltr" style="font-size: 0.75rem; color: var(--text-muted); text-align: left; align-self: flex-start;">${escapeHtml(item.path)}</code>
+          <span class="cache-item-desc">${escapeHtml(item.description || '')}</span>
+          <code dir="ltr" class="cache-item-path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
         </div>
-        <div style="display: flex; align-items: center; gap: 16px;">
-          <strong>${formatCacheBytes(item.bytes)}</strong>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <strong style="font-size: 0.850rem; white-space: nowrap;">${formatCacheBytes(item.bytes)}</strong>
         </div>
       `;
 

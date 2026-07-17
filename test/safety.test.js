@@ -603,6 +603,7 @@ test('SafetyLayer.checkCachePath blocks paths outside home or containing invalid
     // Should fail:
     assert.throws(() => safety.checkCachePath('/System/Library/Caches'), /SafetyError/);
     assert.throws(() => safety.checkCachePath('/Users/otheruser/.npm'), /SafetyError/);
+    assert.throws(() => safety.checkCachePath('/Users/testuser-sibling/.npm'), err => err instanceof SafetyError && err.code === 'PATH_OUTSIDE_HOME');
     assert.throws(() => safety.checkCachePath('/Users/testuser/.npm/../../critical'), /SafetyError/);
   } finally {
     os.homedir = originalHomedir;
