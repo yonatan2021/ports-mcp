@@ -37,3 +37,28 @@ test('getStorageUsage reports disk capacity and largest readable cache folders',
     await fs.rm(cacheDir, { recursive: true, force: true });
   }
 });
+
+test('getCacheDetails categorizes folders and calculates sizes', async () => {
+  const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-mcp-cache-details-'));
+  await fs.mkdir(path.join(cacheDir, 'com.apple.Safari'));
+  
+  const runner = {
+    execFile: async (file, args) => {
+      if (file === 'du') {
+        return { stdout: `1024\t${path.join(cacheDir, 'com.apple.Safari')}\n` };
+      }
+      return { stdout: '' };
+    }
+  };
+  
+  const service = createPortService({ cacheDir, runner });
+  const details = await service.getCacheDetails();
+  
+  const safariItem = details.find(i => i.name === 'com.apple.Safari');
+  assert.ok(safariItem);
+  assert.equal(safariItem.category, 'NEEDS_CONFIRMATION');
+  assert.equal(safariItem.bytes, 1048576); // 1024 KB
+  
+  await fs.rm(cacheDir, { recursive: true, force: true });
+});
+

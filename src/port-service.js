@@ -484,6 +484,71 @@ function createPortService(options = {}) {
     return { dryRun: false, signalSent: 'SIGTERM', target };
   }
 
+  async function getCacheDetails() {
+    const cacheDir = options.cacheDir || path.join(os.homedir(), 'Library', 'Caches');
+    const homeDir = os.homedir();
+    const globalCaches = [
+      { name: 'npm Cache', path: path.join(homeDir, '.npm'), description: 'npm package manager download cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Yarn Cache', path: path.join(cacheDir, 'Yarn'), description: 'Yarn package manager download cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'pnpm Cache', path: path.join(cacheDir, 'pnpm'), description: 'pnpm package manager download cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Bun Cache', path: path.join(homeDir, '.bun', 'install', 'cache'), description: 'Bun package installation cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Next.js Cache (.next/cache)', path: path.join(process.cwd(), '.next', 'cache'), description: 'Local Next.js project build cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Vite Cache', path: path.join(process.cwd(), 'node_modules', '.cache'), description: 'Local Vite dependency pre-bundle cache', category: 'SAFE_TO_CLEAR' }
+    ];
+
+    let items = [];
+    
+    // Check global/local specific paths
+    for (const item of globalCaches) {
+      try {
+        const stats = await fs.stat(item.path);
+        if (stats.isDirectory()) {
+          items.push(item);
+        }
+      } catch {}
+    }
+
+    // Scan general User Caches
+    try {
+      const entries = await fs.readdir(cacheDir, { withFileTypes: true });
+      const systemCaches = entries
+        .filter(entry => entry.isDirectory() && !['Yarn', 'pnpm'].includes(entry.name))
+        .map(entry => ({
+          name: entry.name,
+          path: path.join(cacheDir, entry.name),
+          description: `macOS User cache folder for ${entry.name}`,
+          category: 'NEEDS_CONFIRMATION'
+        }))
+        .slice(0, 100);
+      items.push(...systemCaches);
+    } catch {}
+
+    // Calculate sizes using 'du -sk'
+    if (items.length > 0) {
+      const paths = items.map(i => i.path);
+      try {
+        const { stdout } = await runner.execFile('du', ['-sk', ...paths], { allowNonZero: true });
+        const sizeMap = new Map();
+        String(stdout || '').split('\n').forEach(line => {
+          const match = line.match(/^(\d+)\s+(.+)$/);
+          if (match) {
+            sizeMap.set(path.normalize(match[2]), Number(match[1]) * 1024);
+          }
+        });
+        
+        items = items.map(item => {
+          const normPath = path.normalize(item.path);
+          return {
+            ...item,
+            bytes: sizeMap.get(normPath) || 0
+          };
+        }).filter(item => item.bytes > 0);
+      } catch {}
+    }
+
+    return items;
+  }
+
   return {
     listPorts,
     findProcessByPort,
@@ -494,7 +559,8 @@ function createPortService(options = {}) {
     getSystemProcesses,
     suspendProcess,
     resumeProcess,
-    killProcess
+    killProcess,
+    getCacheDetails
   };
 }
 
