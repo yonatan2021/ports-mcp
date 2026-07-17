@@ -294,14 +294,10 @@ function setupEventListeners() {
 
       if (confirm(confirmMessage)) {
         quickCleanCacheBtn.disabled = true;
-        let successCount = 0;
-        for (const item of safeItems) {
-          const success = await executeTrashCacheSilent(item.path);
-          if (success) successCount++;
-        }
+        const paths = safeItems.map(item => item.path);
+        const success = await executeTrashCachesBatch(paths);
         quickCleanCacheBtn.disabled = false;
-        if (successCount > 0) {
-          showToast(`הועברו בהצלחה ${successCount} תיקיות לפח האשפה!`, 'success');
+        if (success) {
           updateStorageUsage();
         }
       }
@@ -1153,7 +1149,10 @@ async function executeTrashCache(path) {
     });
     
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || data.error || 'שגיאה במחיקת התיקייה');
+    if (!res.ok) {
+      const errMsg = data.error?.message || data.error || 'שגיאה במחיקת התיקייה';
+      throw new Error(errMsg);
+    }
     
     showToast(`תיקיית ה-Cache בנתיב ${path} הועברה לפח האשפה בהצלחה!`, 'success');
     return true;
@@ -1163,17 +1162,24 @@ async function executeTrashCache(path) {
   }
 }
 
-async function executeTrashCacheSilent(path) {
+async function executeTrashCachesBatch(paths) {
   try {
     const res = await fetch('/api/system/cache/trash', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, confirm: true })
+      body: JSON.stringify({ paths, confirm: true })
     });
+    
     const data = await res.json();
-    return res.ok && (data.ok || data.trashed);
+    if (!res.ok) {
+      const errMsg = data.error?.message || data.error || 'שגיאה בניקוי התיקיות';
+      throw new Error(errMsg);
+    }
+    
+    showToast(`הועברו בהצלחה ${paths.length} תיקיות לפח האשפה!`, 'success');
+    return true;
   } catch (err) {
-    console.error('Failed to trash cache path silent:', path, err);
+    showToast(err.message, 'error');
     return false;
   }
 }
@@ -1731,10 +1737,7 @@ function renderSimpleCards() {
     }
 
     const portNumber = Number(portObj.port);
-    const portsList = portObj.ports || [portObj.port];
-    const portText = portsList.length > 5
-      ? `${portsList.slice(0, 5).join(', ')} ועוד ${portsList.length - 5}`
-      : portsList.join(', ');
+    const portText = (portObj.ports || [portObj.port]).join(', ');
     const pidText = (portObj.pids || [portObj.pid]).join(', ');
     const isSelf = portNumber === selfPort;
     const isSystemProcess = portObj.isSystem === true;

@@ -760,6 +760,9 @@ h1, h2, h3, h4, h5, h6 {
 .modal-card {
   width: 100%;
   max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   padding: 1.5rem;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
@@ -814,6 +817,9 @@ h1, h2, h3, h4, h5, h6 {
 
 .modal-body {
   margin-bottom: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 4px;
 }
 
 .modal-body p {
@@ -2118,6 +2124,10 @@ html[dir="rtl"] .settings-panel.open {
   flex-wrap: wrap;
   gap: 4px;
   justify-content: center;
+  max-height: 90px;
+  overflow-y: auto;
+  align-content: flex-start;
+  padding: 2px 4px;
 }
 .process-name-cell {
   align-items: flex-start;
@@ -2184,6 +2194,16 @@ html[dir="rtl"] .source-path {
   overflow-wrap: anywhere;
   color: var(--text-secondary);
   font-size: 0.78rem;
+  max-height: 90px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Thin premium scrollbars for inline table cells with many ports */
+.port-badges-wrapper::-webkit-scrollbar,
+.listener-summary .font-mono::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
 }
 .spec-source-item {
   grid-column: 1 / -1;

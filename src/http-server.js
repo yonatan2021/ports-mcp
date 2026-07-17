@@ -174,6 +174,7 @@ function createApp({
       const body = req.body || {};
       const result = await service.trashCachePath({
         path: body.path,
+        paths: body.paths,
         confirm: body.confirm
       });
       res.json(result);

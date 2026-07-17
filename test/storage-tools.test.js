@@ -264,4 +264,50 @@ test('trashCachePath throws PortManagerError (403 status) when safety layer chec
   );
 });
 
+test('trashCachePath batch trashing executes Finder delete for all paths when confirm is true', async () => {
+  const trashedPaths = [];
+  const runner = {
+    execFile: async (file, args) => {
+      if (file === 'osascript') {
+        const match = args[1].match(/delete POSIX file "(.+?)"/);
+        if (match) {
+          // Replace escaped quotes if any, but since we are simple:
+          trashedPaths.push(match[1]);
+        }
+        return { stdout: '' };
+      }
+      return { stdout: '' };
+    }
+  };
+  
+  const path1 = path.join(os.homedir(), '.npm');
+  const path2 = path.join(os.homedir(), '.bun');
+  const service = createPortService({ runner });
+  const result = await service.trashCachePath({
+    paths: [path1, path2],
+    confirm: true
+  });
+  
+  assert.deepEqual(result, { ok: true, trashed: true, paths: [path1, path2] });
+  assert.deepEqual(trashedPaths, [path1, path2]);
+});
+
+test('trashCachePath batch returns dryRun object when confirm is false', async () => {
+  const runner = {
+    execFile: async () => {
+      throw new Error('should not execute shell commands on dry run');
+    }
+  };
+  
+  const path1 = path.join(os.homedir(), '.npm');
+  const path2 = path.join(os.homedir(), '.bun');
+  const service = createPortService({ runner });
+  const result = await service.trashCachePath({
+    paths: [path1, path2],
+    confirm: false
+  });
+  
+  assert.deepEqual(result, { dryRun: true, wouldTrash: [path1, path2] });
+});
+
 

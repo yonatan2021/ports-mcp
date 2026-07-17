@@ -569,15 +569,30 @@ function createPortService(options = {}) {
     return items;
   }
 
-  async function trashCachePath({ path: targetPath, confirm = false }) {
+  async function trashCachePath({ path: targetPath, paths, confirm = false }) {
+    let targetPaths = [];
+    if (targetPath) {
+      targetPaths.push(targetPath);
+    }
+    if (paths && Array.isArray(paths)) {
+      targetPaths.push(...paths);
+    }
+    targetPaths = [...new Set(targetPaths)];
+
+    if (targetPaths.length === 0) {
+      throw new PortManagerError('INVALID_ARGUMENT', 'No cache paths provided', { status: 400 });
+    }
+
     if (safetyLayer) {
-      try {
-        await safetyLayer.checkCachePath(targetPath);
-      } catch (err) {
-        if (err.name === 'SafetyError') {
-          throw new PortManagerError(err.code || 'SAFETY_ERROR', err.message, { status: 403, details: err.details || {} });
+      for (const p of targetPaths) {
+        try {
+          await safetyLayer.checkCachePath(p);
+        } catch (err) {
+          if (err.name === 'SafetyError') {
+            throw new PortManagerError(err.code || 'SAFETY_ERROR', err.message, { status: 403, details: err.details || {} });
+          }
+          throw err;
         }
-        throw err;
       }
 
       if (typeof safetyLayer.checkDestructive === 'function') {
@@ -592,24 +607,33 @@ function createPortService(options = {}) {
     }
 
     if (confirm !== true) {
-      return { dryRun: true, wouldTrash: targetPath };
+      if (!paths && targetPath) {
+        return { dryRun: true, wouldTrash: targetPath };
+      }
+      return { dryRun: true, wouldTrash: targetPaths };
     }
 
-    // Attempt Electron native trashing if running in Electron environment
-    try {
-      const { shell } = require('electron');
-      if (shell && typeof shell.trashItem === 'function') {
-        await shell.trashItem(targetPath);
-        return { ok: true, trashed: true, path: targetPath };
-      }
-    } catch {}
+    for (const p of targetPaths) {
+      let trashed = false;
+      try {
+        const { shell } = require('electron');
+        if (shell && typeof shell.trashItem === 'function') {
+          await shell.trashItem(p);
+          trashed = true;
+        }
+      } catch {}
 
-    // Fallback to AppleScript for CLI / Web Server mode
-    const escapedPath = targetPath.replace(/(["\\])/g, '\\$1');
-    const appleScript = `tell application "Finder" to delete POSIX file "${escapedPath}"`;
-    
-    await runner.execFile('osascript', ['-e', appleScript]);
-    return { ok: true, trashed: true, path: targetPath };
+      if (!trashed) {
+        const escapedPath = p.replace(/(["\\])/g, '\\$1');
+        const appleScript = `tell application "Finder" to delete POSIX file "${escapedPath}"`;
+        await runner.execFile('osascript', ['-e', appleScript]);
+      }
+    }
+
+    if (!paths && targetPath) {
+      return { ok: true, trashed: true, path: targetPath };
+    }
+    return { ok: true, trashed: true, paths: targetPaths };
   }
 
   return {

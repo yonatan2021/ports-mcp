@@ -191,7 +191,37 @@ test('POST /api/system/cache/trash triggers trashCachePath and returns result', 
     assert.equal(res.status, 200);
     const data = await res.json();
     assert.deepEqual(data, { ok: true, path: '/test/cache/path', deletedBytes: 100 });
-    assert.deepEqual(calledWith, { path: '/test/cache/path', confirm: true });
+    assert.deepEqual(calledWith, { path: '/test/cache/path', confirm: true, paths: undefined });
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
+test('POST /api/system/cache/trash with paths (batch) triggers trashCachePath and returns result', async () => {
+  let calledWith = null;
+  const serviceMock = {
+    trashCachePath: async (args) => {
+      calledWith = args;
+      return { ok: true, paths: args.paths, deletedBytes: 200 };
+    }
+  };
+  const app = createApp({ service: serviceMock });
+  
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+  const url = `http://127.0.0.1:${address.port}/api/system/cache/trash`;
+  
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths: ['/path1', '/path2'], confirm: true })
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(data, { ok: true, paths: ['/path1', '/path2'], deletedBytes: 200 });
+    assert.deepEqual(calledWith, { path: undefined, paths: ['/path1', '/path2'], confirm: true });
   } finally {
     await new Promise(r => server.close(r));
   }
