@@ -331,6 +331,24 @@ function createAgentTools({ service, safetyLayer, runner = null } = {}) {
     }
   }
 
+  async function listCaches() {
+    try {
+      const items = await service.getCacheDetails();
+      return success(items);
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
+  async function cleanCache({ path, confirm }) {
+    try {
+      const result = await service.trashCachePath({ path, confirm });
+      return success(result);
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
   return {
     verifyProcessOwner,
     getProcessDetails,
@@ -341,7 +359,29 @@ function createAgentTools({ service, safetyLayer, runner = null } = {}) {
     listSystemProcesses,
     suspendProcess,
     resumeProcess,
+    listCaches,
+    cleanCache,
   };
 }
 
-module.exports = { createAgentTools };
+const MCP_TOOL_SCHEMAS = {
+  list_caches: {
+    name: "list_caches",
+    description: "Scan and list macOS user and developer cache folders, size in bytes, and safety category.",
+    inputSchema: { type: "object", properties: {} }
+  },
+  clean_cache: {
+    name: "clean_cache",
+    description: "Move a specific cache directory to the system trash bin safely.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the cache directory" },
+        confirm: { type: "boolean", description: "Must be true to perform the trashing action" }
+      },
+      required: ["path", "confirm"]
+    }
+  }
+};
+
+module.exports = { createAgentTools, MCP_TOOL_SCHEMAS };

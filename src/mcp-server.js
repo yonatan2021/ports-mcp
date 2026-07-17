@@ -390,6 +390,43 @@ function createMcpServer({ service = createPortService(), safetyLayer = null } =
     }, 'resume_process')
   );
 
+  server.registerTool(
+    'list_caches',
+    {
+      title: 'List caches',
+      description: 'Scan and list macOS user and developer cache folders, size in bytes, and safety category.',
+      inputSchema: {},
+    },
+    withTimeout(async () => {
+      try {
+        const items = await service.getCacheDetails();
+        return jsonText(items);
+      } catch (error) {
+        return errorResult(error);
+      }
+    }, 'list_caches')
+  );
+
+  server.registerTool(
+    'clean_cache',
+    {
+      title: 'Clean cache',
+      description: 'Move a specific cache directory to the system trash bin safely.',
+      inputSchema: {
+        path: z.string().describe('Absolute path to the cache directory'),
+        confirm: z.boolean().describe('Must be true to perform the trashing action'),
+      },
+    },
+    withTimeout(async ({ path, confirm }) => {
+      try {
+        const result = await service.trashCachePath({ path, confirm });
+        return jsonText(result);
+      } catch (error) {
+        return errorResult(error);
+      }
+    }, 'clean_cache')
+  );
+
   return server;
 }
 

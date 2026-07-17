@@ -5,6 +5,8 @@ const { SafetyConfig } = require('../src/config');
 const { SafetyLayer } = require('../src/safety');
 const { createPortService, PortManagerError } = require('../src/port-service');
 const { createAgentTools } = require('../src/mcp-tools');
+const { createMcpServer } = require('../src/mcp-server');
+
 
 // ======================================================================
 // Fixtures
@@ -460,3 +462,81 @@ test('createAgentTools throws without service', () => {
     /service is required/
   );
 });
+
+// ======================================================================
+// Cache cleaning tools (list_caches, clean_cache)
+// ======================================================================
+
+test('list_caches tool returns cache details from service', async () => {
+  const service = {
+    getCacheDetails: async () => [
+      { name: 'npm Cache', path: '/Users/yoni/.npm', bytes: 1000, category: 'SAFE_TO_CLEAR', description: 'npm cache' }
+    ]
+  };
+  const tools = createAgentTools({ service });
+  const result = await tools.listCaches();
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data, [
+    { name: 'npm Cache', path: '/Users/yoni/.npm', bytes: 1000, category: 'SAFE_TO_CLEAR', description: 'npm cache' }
+  ]);
+});
+
+test('clean_cache tool trashes path via service', async () => {
+  const service = {
+    trashCachePath: async ({ path, confirm }) => {
+      assert.equal(path, '/Users/yoni/.npm');
+      assert.equal(confirm, true);
+      return { ok: true, trashed: true, path };
+    }
+  };
+  const tools = createAgentTools({ service });
+  const result = await tools.cleanCache({ path: '/Users/yoni/.npm', confirm: true });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.data, { ok: true, trashed: true, path: '/Users/yoni/.npm' });
+});
+
+test('MCP Server registers list_caches and clean_cache', async () => {
+  const service = {
+    getCacheDetails: async () => [],
+    trashCachePath: async () => ({})
+  };
+  const server = createMcpServer({ service });
+  
+  assert.ok(server._registeredTools.list_caches, 'list_caches tool should be registered');
+  assert.ok(server._registeredTools.clean_cache, 'clean_cache tool should be registered');
+});
+
+test('list_caches tool handler returns structured caches', async () => {
+  const service = {
+    getCacheDetails: async () => [
+      { name: 'npm Cache', path: '/Users/yoni/.npm', bytes: 1000, category: 'SAFE_TO_CLEAR', description: 'npm cache' }
+    ]
+  };
+  const server = createMcpServer({ service });
+  const tool = server._registeredTools.list_caches;
+  
+  const result = await tool.handler();
+  assert.deepEqual(JSON.parse(result.content[0].text), [
+    { name: 'npm Cache', path: '/Users/yoni/.npm', bytes: 1000, category: 'SAFE_TO_CLEAR', description: 'npm cache' }
+  ]);
+});
+
+test('clean_cache tool handler trashes cache path', async () => {
+  let trashedPath = null;
+  let isConfirmed = false;
+  const service = {
+    trashCachePath: async ({ path, confirm }) => {
+      trashedPath = path;
+      isConfirmed = confirm;
+      return { ok: true, trashed: true, path };
+    }
+  };
+  const server = createMcpServer({ service });
+  const tool = server._registeredTools.clean_cache;
+  
+  const result = await tool.handler({ path: '/Users/yoni/.npm', confirm: true });
+  assert.equal(trashedPath, '/Users/yoni/.npm');
+  assert.equal(isConfirmed, true);
+  assert.deepEqual(JSON.parse(result.content[0].text), { ok: true, trashed: true, path: '/Users/yoni/.npm' });
+});
+
