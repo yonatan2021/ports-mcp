@@ -140,6 +140,8 @@ function createPortService(options = {}) {
   const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const safetyLayer = options.safetyLayer || null;
   const rateLimiter = createRateLimiter();
+  const homeDir = options.homeDir || os.homedir();
+  const cwd = options.cwd || process.cwd();
 
   function checkProcessBlocklist(name) {
     const blocked = [...PROCESS_BLOCKLIST].find(b => name.toLowerCase() === b.toLowerCase());
@@ -327,7 +329,7 @@ function createPortService(options = {}) {
       throw new PortManagerError('STORAGE_UNAVAILABLE', 'Could not read disk usage', { status: 503 });
     }
 
-    const cacheDir = options.cacheDir || path.join(os.homedir(), 'Library', 'Caches');
+    const cacheDir = options.cacheDir || path.join(homeDir, 'Library', 'Caches');
     let cachePaths = [];
     try {
       const entries = await fs.readdir(cacheDir, { withFileTypes: true });
@@ -485,15 +487,14 @@ function createPortService(options = {}) {
   }
 
   async function getCacheDetails() {
-    const cacheDir = options.cacheDir || path.join(os.homedir(), 'Library', 'Caches');
-    const homeDir = os.homedir();
+    const cacheDir = options.cacheDir || path.join(homeDir, 'Library', 'Caches');
     const globalCaches = [
       { name: 'npm Cache', path: path.join(homeDir, '.npm'), description: 'npm package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'Yarn Cache', path: path.join(cacheDir, 'Yarn'), description: 'Yarn package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'pnpm Cache', path: path.join(cacheDir, 'pnpm'), description: 'pnpm package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'Bun Cache', path: path.join(homeDir, '.bun', 'install', 'cache'), description: 'Bun package installation cache', category: 'SAFE_TO_CLEAR' },
-      { name: 'Next.js Cache (.next/cache)', path: path.join(process.cwd(), '.next', 'cache'), description: 'Local Next.js project build cache', category: 'SAFE_TO_CLEAR' },
-      { name: 'Vite Cache', path: path.join(process.cwd(), 'node_modules', '.cache'), description: 'Local Vite dependency pre-bundle cache', category: 'SAFE_TO_CLEAR' }
+      { name: 'Next.js Cache (.next/cache)', path: path.join(cwd, '.next', 'cache'), description: 'Local Next.js project build cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Vite Cache', path: path.join(cwd, 'node_modules', '.cache'), description: 'Local Vite dependency pre-bundle cache', category: 'SAFE_TO_CLEAR' }
     ];
 
     let items = [];
@@ -523,6 +524,20 @@ function createPortService(options = {}) {
       items.push(...systemCaches);
     } catch {}
 
+    // Invoke safetyLayer.checkCachePath for each scanned path
+    if (safetyLayer && typeof safetyLayer.checkCachePath === 'function') {
+      const checkedItems = [];
+      for (const item of items) {
+        try {
+          await safetyLayer.checkCachePath(item.path);
+          checkedItems.push(item);
+        } catch {
+          // If it throws any error, exclude it from returned items.
+        }
+      }
+      items = checkedItems;
+    }
+
     // Calculate sizes using 'du -sk'
     if (items.length > 0) {
       const paths = items.map(i => i.path);
@@ -543,7 +558,12 @@ function createPortService(options = {}) {
             bytes: sizeMap.get(normPath) || 0
           };
         }).filter(item => item.bytes > 0);
-      } catch {}
+      } catch {
+        items = items.map(item => ({
+          ...item,
+          bytes: 0
+        }));
+      }
     }
 
     return items;

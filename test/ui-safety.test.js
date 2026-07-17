@@ -134,7 +134,7 @@ test('app.js checks read-only mode and disables kill buttons accordingly', () =>
 test('app.js adds safety indicator classes to port badges', () => {
   assert.match(appJs, /safetyClass/);
   assert.match(appJs, /window\.SafetySettings\.getState/);
-  assert.match(appJs, /badgeClass \+= safetyClass/);
+  assert.match(appJs, /badgeClass \+= ' ' \+ safetyClass/);
 });
 
 test('CSS includes settings panel, RTL overrides, and safety badge styles', () => {
