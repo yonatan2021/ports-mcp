@@ -316,6 +316,36 @@ class SafetyLayer {
       ...this.config.toJSON(),
     };
   }
+
+  checkCachePath(targetPath) {
+    const path = require('node:path');
+    const normalized = path.normalize(targetPath);
+    const homeDir = os.homedir();
+
+    if (!normalized.startsWith(homeDir)) {
+      throw new SafetyError('PATH_OUTSIDE_HOME', `Path "${normalized}" is outside the user home directory.`);
+    }
+
+    if (normalized.includes('..')) {
+      throw new SafetyError('PATH_TRAVERSAL', `Path traversal detected in "${normalized}".`);
+    }
+
+    const allowedPatterns = [
+      /\/\.npm$/,
+      /\/Library\/Caches\/.+/,
+      /\/\.bun\/install\/cache$/,
+      /\/\.next\/cache$/,
+      /\/node_modules\/\.cache$/,
+      /\/\.vite$/
+    ];
+
+    const isMatch = allowedPatterns.some(pattern => pattern.test(normalized));
+    if (!isMatch) {
+      throw new SafetyError('PATH_NOT_A_CACHE', `Path "${normalized}" is not a recognized or safe cache folder.`);
+    }
+
+    return true;
+  }
 }
 
 module.exports = {

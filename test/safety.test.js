@@ -587,4 +587,26 @@ test('SafetyLayer permits port-less process for current user but blocks system p
   assert.equal(res3.ok, true);
 });
 
+test('SafetyLayer.checkCachePath blocks paths outside home or containing invalid segments', async () => {
+  const os = require('node:os');
+  const originalHomedir = os.homedir;
+  os.homedir = () => '/Users/testuser';
+
+  try {
+    const config = new SafetyConfig({ mode: 'allowlist' });
+    const safety = new SafetyLayer({ config, currentUser: 'testuser' });
+    
+    // Should pass:
+    assert.ok(safety.checkCachePath('/Users/testuser/.npm'));
+    assert.ok(safety.checkCachePath('/Users/testuser/Library/Caches/foo'));
+    
+    // Should fail:
+    assert.throws(() => safety.checkCachePath('/System/Library/Caches'), /SafetyError/);
+    assert.throws(() => safety.checkCachePath('/Users/otheruser/.npm'), /SafetyError/);
+    assert.throws(() => safety.checkCachePath('/Users/testuser/.npm/../../critical'), /SafetyError/);
+  } finally {
+    os.homedir = originalHomedir;
+  }
+});
+
 
