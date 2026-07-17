@@ -609,4 +609,42 @@ test('SafetyLayer.checkCachePath blocks paths outside home or containing invalid
   }
 });
 
+test('SafetyLayer.checkCachePath validates targetPath is a string', () => {
+  const config = new SafetyConfig({ mode: 'allowlist' });
+  const safety = new SafetyLayer({ config, currentUser: 'testuser' });
+
+  assert.throws(
+    () => safety.checkCachePath(null),
+    err => err instanceof SafetyError && err.code === 'INVALID_PATH'
+  );
+  assert.throws(
+    () => safety.checkCachePath(123),
+    err => err instanceof SafetyError && err.code === 'INVALID_PATH'
+  );
+  assert.throws(
+    () => safety.checkCachePath(undefined),
+    err => err instanceof SafetyError && err.code === 'INVALID_PATH'
+  );
+});
+
+test('SafetyLayer.checkCachePath detects traversal in raw targetPath', () => {
+  const os = require('node:os');
+  const originalHomedir = os.homedir;
+  os.homedir = () => '/Users/testuser';
+
+  try {
+    const config = new SafetyConfig({ mode: 'allowlist' });
+    const safety = new SafetyLayer({ config, currentUser: 'testuser' });
+
+    // Path traversal in raw path that resolves inside home dir
+    assert.throws(
+      () => safety.checkCachePath('/Users/testuser/.npm/../.npm'),
+      err => err instanceof SafetyError && err.code === 'PATH_TRAVERSAL'
+    );
+  } finally {
+    os.homedir = originalHomedir;
+  }
+});
+
+
 

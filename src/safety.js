@@ -11,6 +11,7 @@
  */
 
 const os = require('node:os');
+const path = require('node:path');
 
 /**
  * Error class for safety violations.
@@ -318,16 +319,19 @@ class SafetyLayer {
   }
 
   checkCachePath(targetPath) {
-    const path = require('node:path');
+    if (typeof targetPath !== 'string') {
+      throw new SafetyError('INVALID_PATH', 'Path must be a string.');
+    }
+
+    if (targetPath.includes('..')) {
+      throw new SafetyError('PATH_TRAVERSAL', `Path traversal detected in "${targetPath}".`);
+    }
+
     const normalized = path.normalize(targetPath);
     const homeDir = os.homedir();
 
     if (!normalized.startsWith(homeDir)) {
       throw new SafetyError('PATH_OUTSIDE_HOME', `Path "${normalized}" is outside the user home directory.`);
-    }
-
-    if (normalized.includes('..')) {
-      throw new SafetyError('PATH_TRAVERSAL', `Path traversal detected in "${normalized}".`);
     }
 
     const allowedPatterns = [
