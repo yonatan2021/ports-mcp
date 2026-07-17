@@ -25,6 +25,24 @@ test('GET /api/system/usage returns stats', async () => {
   }
 });
 
+test('GET /api/system/storage returns disk and cache usage', async () => {
+  const serviceMock = {
+    getStorageUsage: async () => ({ disk: { percentage: 40 }, cache: { knownBytes: 1024, items: [] } })
+  };
+  const app = createApp({ service: serviceMock });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${address.port}/api/system/storage`);
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).disk.percentage, 40);
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
 test('GET /api/system/processes returns processes list', async () => {
   const serviceMock = {
     getSystemProcesses: async () => [{ pid: 123, processName: 'node', cpu: 5.5, memoryMb: 128.0 }]

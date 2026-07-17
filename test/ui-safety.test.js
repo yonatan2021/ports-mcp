@@ -45,12 +45,12 @@ test('kill confirmation requires explicit PID entry before enabling destructive 
 
 test('self and system ports render with disabled destructive controls and explanations', () => {
   assert.match(appJs, /const isSystemProcess = portObj\.isSystem === true/);
-  assert.match(appJs, /const killDisabled = isSelf \|\| isSystemProcess/);
+  assert.match(appJs, /const killDisabled = isAggregate \|\| isSelf \|\| isSystemProcess/);
   assert.match(appJs, /Self-protection: this is the Port Manager UI server/);
   assert.match(appJs, /System-process protection/);
   assert.match(appJs, /Restart disabled: arbitrary command restart is not available/);
-  assert.match(appJs, /const portText = escapeHtml\(String\(portObj\.port \?\? ''\)\)/);
-  assert.match(appJs, /const pidText = escapeHtml\(String\(portObj\.pid \?\? ''\)\)/);
+  assert.match(appJs, /const portText = escapeHtml\(\(portObj\.ports \|\| \[portObj\.port\]\)\.join\(', '\)\)/);
+  assert.match(appJs, /const pidText = escapeHtml\(\(portObj\.pids \|\| \[portObj\.pid\]\)\.join\(', '\)\)/);
 });
 
 test('settings panel is present in HTML with all sections', () => {
@@ -127,7 +127,7 @@ test('app.js checks read-only mode and disables kill buttons accordingly', () =>
   assert.match(appJs, /isReadOnlyMode/);
   assert.match(appJs, /window\.SafetySettings/);
   assert.match(appJs, /canKill/);
-  assert.match(appJs, /killDisabled = isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
+  assert.match(appJs, /killDisabled = isAggregate \|\| isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
   assert.match(appJs, /Server is in read-only mode/);
 });
 
@@ -196,4 +196,25 @@ test('UI includes performance management and monitoring widgets', () => {
   assert.match(appJs, /renderSystemProcessesTable/);
   assert.match(appJs, /suspendSystemProcess/);
   assert.match(appJs, /resumeSystemProcess/);
+});
+
+test('UI shows read-only storage and cache findings', () => {
+  assert.match(indexHtml, /id="metric-disk-usage"/);
+  assert.match(indexHtml, /id="metric-cache-usage"/);
+  assert.match(indexHtml, /id="cache-findings"/);
+  assert.match(indexHtml, /id="storage-refresh-btn"/);
+  assert.match(appJs, /fetch\('\/api\/system\/storage'/);
+  assert.match(appJs, /updateStorageUsage/);
+  assert.match(styleCss, /\.storage-findings/);
+});
+
+test('port view shows source path, listener scope, and grouped identical commands', () => {
+  assert.match(indexHtml, /כתובת האזנה/);
+  assert.match(indexHtml, /id="spec-address"/);
+  assert.match(indexHtml, /id="spec-source"/);
+  assert.match(appJs, /function getFriendlyAppName/);
+  assert.match(appJs, /function getSourceInfo/);
+  assert.match(appJs, /function getListenerInfo/);
+  assert.match(appJs, /function aggregatePorts/);
+  assert.match(appJs, /סגירה מרוכזת אינה זמינה/);
 });

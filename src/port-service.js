@@ -1,5 +1,7 @@
 const { execFile: childExecFile } = require('node:child_process');
 const os = require('node:os');
+const path = require('node:path');
+const fs = require('node:fs/promises');
 
 
 const MAX_PORTS_RETURNED = 500;
@@ -160,8 +162,15 @@ function createPortService(options = {}) {
       const { stdout } = await runner.execFile('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n'], { allowNonZero: true });
       const rawPorts = parseLsofOutput(stdout);
       const uniquePids = [...new Set(rawPorts.map(p => p.pid))];
-      const commandMap = await getProcessCommands(uniquePids);
-      ports = rawPorts.map(p => ({ ...p, commandLine: commandMap[p.pid] || 'Unknown command' }));
+      const [commandMap, workingDirectoryMap] = await Promise.all([
+        getProcessCommands(uniquePids),
+        getProcessWorkingDirectories(uniquePids),
+      ]);
+      ports = rawPorts.map(p => ({
+        ...p,
+        commandLine: commandMap[p.pid] || 'Unknown command',
+        workingDirectory: workingDirectoryMap[p.pid] || null,
+      }));
     }
 
     let results = ports.map(p => {
@@ -177,6 +186,19 @@ function createPortService(options = {}) {
     const entries = await Promise.all(pids.map(async (pid) => {
       try { const { stdout } = await runner.execFile('ps', ['-p', String(pid), '-o', 'command='], { allowNonZero: true }); return [pid, stdout.trim() || 'Unknown command']; }
       catch { return [pid, 'Unknown command']; }
+    }));
+    return Object.fromEntries(entries);
+  }
+
+  async function getProcessWorkingDirectories(pids) {
+    const entries = await Promise.all(pids.map(async (pid) => {
+      try {
+        const { stdout } = await runner.execFile('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { allowNonZero: true });
+        const workingDirectory = String(stdout || '').split('\n').find(line => line.startsWith('n/'))?.slice(1);
+        return [pid, workingDirectory || null];
+      } catch {
+        return [pid, null];
+      }
     }));
     return Object.fromEntries(entries);
   }
@@ -290,6 +312,60 @@ function createPortService(options = {}) {
         totalBytes,
         percentage: memoryPercentage
       }
+    };
+  }
+
+  async function getStorageUsage() {
+    const { stdout: diskStdout } = await runner.execFile('df', ['-kP', '/'], { allowNonZero: true });
+    const diskLine = String(diskStdout || '').trim().split('\n').at(-1).trim().split(/\s+/);
+    const totalKiB = Number(diskLine[1]);
+    const usedKiB = Number(diskLine[2]);
+    const availableKiB = Number(diskLine[3]);
+    const percentage = Number.parseInt(diskLine[4], 10);
+
+    if (![totalKiB, usedKiB, availableKiB, percentage].every(Number.isFinite)) {
+      throw new PortManagerError('STORAGE_UNAVAILABLE', 'Could not read disk usage', { status: 503 });
+    }
+
+    const cacheDir = options.cacheDir || path.join(os.homedir(), 'Library', 'Caches');
+    let cachePaths = [];
+    try {
+      const entries = await fs.readdir(cacheDir, { withFileTypes: true });
+      cachePaths = entries
+        .filter(entry => entry.isDirectory())
+        .map(entry => path.join(cacheDir, entry.name))
+        .sort()
+        .slice(0, 200);
+    } catch {
+      // Cache access can be restricted by macOS privacy protections.
+    }
+
+    let cacheItems = [];
+    if (cachePaths.length > 0) {
+      try {
+        const { stdout } = await runner.execFile('du', ['-sk', ...cachePaths], { allowNonZero: true });
+        cacheItems = String(stdout || '').split('\n').flatMap(line => {
+          const match = line.match(/^(\d+)\s+(.+)$/);
+          if (!match) return [];
+          return [{ name: path.basename(match[2]), path: match[2], bytes: Number(match[1]) * 1024 }];
+        }).filter(item => Number.isFinite(item.bytes)).sort((a, b) => b.bytes - a.bytes).slice(0, 6);
+      } catch {
+        // Keep disk data useful even when individual cache folders are unavailable.
+      }
+    }
+
+    return {
+      disk: {
+        totalBytes: totalKiB * 1024,
+        usedBytes: usedKiB * 1024,
+        availableBytes: availableKiB * 1024,
+        percentage,
+      },
+      cache: {
+        knownBytes: cacheItems.reduce((total, item) => total + item.bytes, 0),
+        scannedItems: cacheItems.length,
+        items: cacheItems,
+      },
     };
   }
 
@@ -414,6 +490,7 @@ function createPortService(options = {}) {
     killProcessOnPort,
     restartProcessOnPort,
     getSystemUsage,
+    getStorageUsage,
     getSystemProcesses,
     suspendProcess,
     resumeProcess,

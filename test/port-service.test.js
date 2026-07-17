@@ -52,6 +52,10 @@ test('listPorts uses execFile argv and enriches command lines without shell inte
   const runner = {
     execFile: async (file, args) => {
       calls.push([file, args]);
+      if (file === 'lsof' && args.includes('cwd')) {
+        if (args[2] === '12345') return { stdout: 'p12345\nfcwd\nn/Users/yoni/projects/api\n', stderr: '', exitCode: 0 };
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
       if (file === 'lsof') return { stdout: LSOF_SAMPLE, stderr: '', exitCode: 0 };
       if (file === 'ps' && args[1] === '12345') return { stdout: 'node server.js\n', stderr: '', exitCode: 0 };
       if (file === 'ps' && args[1] === '22222') return { stdout: '/usr/libexec/ControlCenter\n', stderr: '', exitCode: 0 };
@@ -66,6 +70,7 @@ test('listPorts uses execFile argv and enriches command lines without shell inte
   assert.equal(ports[0].commandLine, '/usr/libexec/ControlCenter');
   assert.equal(ports[1].commandLine, 'node server.js');
   assert.equal(ports[2].commandLine, 'python3 -m http.server 54321');
+  assert.equal(ports[1].workingDirectory, '/Users/yoni/projects/api');
   assert.deepEqual(calls[0], ['lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n']]);
   assert.ok(calls.every(([file]) => file !== 'sh' && file !== '/bin/sh'));
 });

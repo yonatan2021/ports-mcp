@@ -143,6 +143,14 @@ function createApp({
     }
   });
 
+  app.get('/api/system/storage', async (_req, res) => {
+    try {
+      res.json(await service.getStorageUsage());
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   app.get('/api/system/processes', async (_req, res) => {
     try {
       const processes = await service.getSystemProcesses();

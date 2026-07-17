@@ -93,6 +93,14 @@
       </div>
     </section>
 
+    <!-- Simple Summary Strip (for Simple View) -->
+    <section id="simple-summary-strip" class="simple-summary-strip glass hidden" aria-label="סיכום מצב מהיר">
+      <div class="summary-content">
+        <span class="summary-status-icon">🟢</span>
+        <span id="simple-summary-text">המחשב פועל בצורה תקינה. טוען נתונים…</span>
+      </div>
+    </section>
+
     <!-- Metrics Cards Grid -->
     <section class="metrics-grid" aria-label="סיכום מצב">
       <div class="metric-card metric-count glass">
@@ -136,6 +144,18 @@
       </div>
     </section>
 
+    <section class="storage-section glass" aria-labelledby="storage-title">
+      <div class="storage-header">
+        <div><p class="eyebrow">מקום פנוי</p><h2 id="storage-title">אחסון וקבצים זמניים</h2></div>
+        <button id="storage-refresh-btn" class="btn btn-secondary" type="button">סריקה מחדש</button>
+      </div>
+      <div class="storage-summary">
+        <div class="storage-metric"><span class="storage-icon">💽</span><div><h3>נפח דיסק</h3><p id="metric-disk-usage" class="storage-value">ממתין לסריקה</p><p id="metric-disk-detail" class="metric-detail"></p></div></div>
+        <div class="storage-metric"><span class="storage-icon">🧹</span><div><h3>Cache שזוהה</h3><p id="metric-cache-usage" class="storage-value">ממתין לסריקה</p><p id="metric-cache-detail" class="metric-detail">קריאה בלבד — אין מחיקה אוטומטית</p></div></div>
+      </div>
+      <div id="cache-findings" class="storage-findings" aria-live="polite"><p class="metric-detail">סורק תיקיות Cache מקומיות…</p></div>
+    </section>
+
     <!-- Dynamic Warning Banner -->
     <section id="warning-banner" class="warning-banner glass hidden" style="margin-bottom: 20px;">
       <div class="warning-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
@@ -168,6 +188,11 @@
         <input type="text" id="search-input" placeholder="חיפוש אפליקציה או מספר פורט…" autocomplete="off" aria-label="חיפוש אפליקציה או מספר פורט">
       </div>
       
+      <div class="view-mode-toggle" role="radiogroup" aria-label="מצב תצוגה">
+        <button id="view-mode-simple" class="view-mode-btn" role="radio" aria-checked="false" data-mode="simple">✨ תצוגה פשוטה</button>
+        <button id="view-mode-detailed" class="view-mode-btn" role="radio" aria-checked="false" data-mode="detailed">🛠️ תצוגה מתקדמת</button>
+      </div>
+
       <div class="filter-tabs">
         <button class="filter-tab active" data-filter="all">הכול</button>
         <button class="filter-tab" data-filter="user">האפליקציות שלי</button>
@@ -178,16 +203,17 @@
 
     <!-- Ports Display Area -->
     <main class="ports-container glass">
-      <div class="table-wrapper">
+      <!-- Detailed Table View -->
+      <div id="table-view-wrapper" class="table-wrapper">
         <table class="ports-table">
           <thead>
             <tr>
               <th class="sortable" data-sort="port">פורט <span class="sort-indicator">▲</span></th>
-              <th class="sortable" data-sort="processName">אפליקציה</th>
+              <th class="sortable" data-sort="processName">אפליקציה ומקור</th>
               <th class="sortable column-pid" data-sort="pid">PID</th>
-              <th class="sortable column-advanced" data-sort="user">משתמש</th>
+              <th class="sortable column-advanced" data-sort="address">כתובת האזנה</th>
               <th class="column-advanced">תקשורת</th>
-              <th>למה הוא פתוח?</th>
+              <th>גישה</th>
               <th class="column-command">פקודת הפעלה</th>
               <th class="text-right">פעולות</th>
             </tr>
@@ -201,6 +227,13 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Simple Cards View -->
+      <div id="cards-view-wrapper" class="cards-wrapper hidden">
+        <div id="ports-cards-container" class="cards-grid">
+          <!-- Cards will be dynamically generated here -->
+        </div>
       </div>
 
       <!-- Empty State -->
@@ -401,6 +434,14 @@
             <span class="spec-val" id="spec-user">--</span>
           </div>
           <div class="spec-item">
+            <span class="spec-label">כתובת האזנה</span>
+            <span class="spec-val font-mono" id="spec-address" dir="ltr">--</span>
+          </div>
+          <div class="spec-item spec-source-item">
+            <span class="spec-label">קובץ / תיקיית מקור</span>
+            <span class="spec-val font-mono" id="spec-source" dir="ltr">--</span>
+          </div>
+          <div class="spec-item">
             <span class="spec-label">פרוטוקול</span>
             <span class="spec-val" id="spec-protocol">--</span>
           </div>
@@ -410,7 +451,7 @@
           </div>
         </div>
         <div class="spec-command-section">
-          <span class="spec-label">פקודת הפעלה מלאה במערכת (Command Line)</span>
+          <span class="spec-label">נתיב / פקודת הפעלה מלאה במערכת (Command Line)</span>
           <div class="command-box-wrapper">
             <pre class="command-pre" dir="ltr"><code id="spec-command">--</code></pre>
             <button class="btn btn-copy" id="btn-copy-command">
