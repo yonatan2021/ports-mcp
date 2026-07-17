@@ -2707,3 +2707,8 @@ body.view-detailed .simple-summary-strip {
   display: none;
 }
 
+#quick-clean-cache-btn {
+  min-height: 44px;
+}
+
+
