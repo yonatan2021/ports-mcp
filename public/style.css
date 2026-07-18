@@ -3064,6 +3064,7 @@ body.view-simple .simple-port-row-actions > * { min-height: 44px; }
 
 body.view-simple .simple-port-browser-link,
 body.view-simple .simple-port-details-btn,
+body.view-simple .simple-port-pause-btn,
 body.view-simple .simple-port-stop-btn {
   display: inline-flex;
   align-items: center;
@@ -3087,6 +3088,26 @@ body.view-simple .simple-port-details-btn:hover {
 
 body.view-simple .simple-port-stop-btn:not(:disabled):hover {
   border-color: rgba(239, 68, 68, 0.55);
+  color: #fff;
+}
+
+body.view-simple .simple-port-pause-btn {
+  border-color: rgba(240, 170, 40, 0.3);
+  color: var(--color-warning);
+}
+
+body.view-simple .simple-port-pause-btn:not(:disabled):hover {
+  border-color: rgba(240, 170, 40, 0.55);
+  color: #fff;
+}
+
+body.view-simple .btn-resume-simple {
+  border-color: rgba(64, 210, 150, 0.3);
+  color: var(--color-success);
+}
+
+body.view-simple .btn-resume-simple:not(:disabled):hover {
+  border-color: rgba(64, 210, 150, 0.55);
   color: #fff;
 }
 

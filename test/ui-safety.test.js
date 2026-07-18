@@ -316,3 +316,49 @@ test('filterAndRenderCache has no dead code after its rendering path', () => {
   // The body must NOT contain a bare `return;` followed by sort/render code
   assert.doesNotMatch(fnBody, /return;\s*\n\s*\/\/ Sort:/, 'filterAndRenderCache must not have dead code after an unconditional return');
 });
+
+test('successful cache cleanup bypasses the storage cache before rendering results', () => {
+  const wizardMatch = appJs.match(/async function confirmSafeCleanWizard\(\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(wizardMatch, 'confirmSafeCleanWizard function not found');
+  assert.match(wizardMatch[1], /await updateStorageUsage\(\{ force: true \}\)/);
+
+  const cacheModalMatch = appJs.match(/function openCacheConfirmModal\(cacheItem\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(cacheModalMatch, 'openCacheConfirmModal function not found');
+  assert.match(cacheModalMatch[1], /updateStorageUsage\(\{ force: true \}\)/);
+});
+
+test('compact system rows provide pause and resume actions without exposing protected processes', () => {
+  const match = appJs.match(/function createSimpleSystemProcessRow\(process\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(match, 'createSimpleSystemProcessRow function not found');
+  const fnBody = match[1];
+  assert.match(fnBody, /btn-pause-simple/);
+  assert.match(fnBody, /btn-resume-simple/);
+  assert.match(fnBody, /openSuspendConfirmModal\(process\)/);
+  assert.match(fnBody, /resumeSystemProcess\(process\.pid\)/);
+  assert.match(fnBody, /simple-port-protected/);
+});
+
+test('compact pause and resume controls use the same accessible action sizing as other compact controls', () => {
+  assert.match(styleCss, /\.simple-port-pause-btn/);
+  assert.match(styleCss, /\.simple-port-pause-btn:not\(:disabled\):hover/);
+});
+
+test('suspend requires explicit confirmation before it invokes the suspend API', () => {
+  const match = appJs.match(/function openSuspendConfirmModal\(process\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(match, 'openSuspendConfirmModal function not found');
+  const fnBody = match[1];
+  assert.match(fnBody, /השבתת התהליך עשויה להפסיק עבודה שטרם נשמרה/);
+  assert.match(fnBody, /השהה תהליך/);
+  assert.match(fnBody, /suspendSystemProcess\(process\.pid\)/);
+});
+
+test('the terminate modal restores its own warning after a suspend confirmation is dismissed', () => {
+  const match = appJs.match(/function openConfirmModal\(action, portObj\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(match, 'openConfirmModal function not found');
+  assert.match(match[1], /סגירת תוכנה השייכת לפורט פעיל שולחת אות סיום/);
+});
+
+test('disk metric labels used space consistently with its percentage value', () => {
+  assert.match(indexHtml, /<span class="metric-label">דיסק בשימוש:<\/span>/);
+  assert.match(appJs, /\$\{disk\.percentage\}% בשימוש/);
+});

@@ -25,10 +25,10 @@ test('listPorts gracefully degrades when ps fails completely', async () => {
   const runner = {
     execFile: async (file, args) => {
       if (file === 'lsof') {
-        return { 
-          stdout: 'COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nnode    12345 username   21u  IPv4 0xabc123      0t0  TCP *:3000 (LISTEN)\n', 
-          stderr: '', 
-          exitCode: 0 
+        return {
+          stdout: 'COMMAND   PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\nnode    12345 username   21u  IPv4 0xabc123      0t0  TCP *:3000 (LISTEN)\n',
+          stderr: '',
+          exitCode: 0
         };
       }
       throw new Error('ps failed to execute');
@@ -47,14 +47,14 @@ test('HTTP API rejects invalid port arguments with structured error', async () =
   const server = http.createServer(app);
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const address = server.address();
-  
+
   try {
     // Test invalid port string
     const res1 = await fetch(`http://127.0.0.1:${address.port}/api/ports/abc`);
     assert.equal(res1.status, 400);
     const errBody1 = await res1.json();
     assert.equal(errBody1.error.code, 'INVALID_PORT');
-    
+
     // Test out of bounds port
     const res2 = await fetch(`http://127.0.0.1:${address.port}/api/ports/99999`);
     assert.equal(res2.status, 400);
@@ -70,7 +70,7 @@ test('HTTP API POST /api/ports/kill rejects invalid PID with 400', async () => {
   const server = http.createServer(app);
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const address = server.address();
-  
+
   try {
     const res = await fetch(`http://127.0.0.1:${address.port}/api/ports/kill`, {
       method: 'POST',
@@ -89,24 +89,24 @@ test('HTTP API POST /api/ports/kill rejects invalid PID with 400', async () => {
 test('Safety settings blocklist prevents port kill actions', async () => {
   const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-mcp-robust-config-'));
   const configPath = path.join(baseDir, 'config.json');
-  
+
   try {
     const config = new SafetyConfig({ configPath });
     config.setMode('blocklist');
     config.addToBlocklist(8080);
-    
+
     const safetyLayer = new SafetyLayer({ config });
-    
+
     const runner = {
       execFile: async () => ({ stdout: '' })
     };
-    
+
     const service = createPortService({
       runner,
       safetyLayer,
       listPorts: async () => [{ port: 8080, pid: 9876, processName: 'node', user: 'yoni', type: 'IPv4', protocol: 'TCP', address: '*:8080', commandLine: 'node app.js' }]
     });
-    
+
     await assert.rejects(
       async () => {
         await service.killProcessOnPort({ port: 8080, pid: 9876, confirm: true });
@@ -127,18 +127,18 @@ test('Safety layer warns when rate limit capacity is highly loaded', async () =>
   const baseDir = path.join(os.tmpdir(), `ports-mcp-rl-${Date.now()}`);
   const config = new SafetyConfig({ configPath: path.join(baseDir, 'config.json') });
   config.setMode('allowlist');
-  
+
   const safetyLayer = new SafetyLayer({ config });
   // Artificially trigger rate limiter operations close to the limit
   // Allowlist mode rate limit defaults to 30 per minute
   for (let i = 0; i < 28; i++) {
     safetyLayer._rateLimiter.record();
   }
-  
+
   const { createAgentTools } = require('../src/mcp-tools');
   const tools = createAgentTools({ service: {}, safetyLayer });
   const result = await tools.getSafetyStatus();
-  
+
   assert.equal(result.data.rateLimit.activeOpsInWindow, 28);
   assert.ok(result.warnings.some(w => w.includes('Rate limit approaching')));
 });

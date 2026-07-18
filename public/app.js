@@ -218,8 +218,8 @@ function assessProcessRisk(portObj) {
     };
   }
 
-  const isDb = processName.includes('postgres') || processName.includes('pg') || processName.includes('mysql') || 
-               processName.includes('redis') || processName.includes('mongo') || processName.includes('elastic') || 
+  const isDb = processName.includes('postgres') || processName.includes('pg') || processName.includes('mysql') ||
+               processName.includes('redis') || processName.includes('mongo') || processName.includes('elastic') ||
                processName.includes('sql') || processName.includes('docker') || processName.includes('dockerd') ||
                [3306, 5432, 6379, 27017, 9200].includes(portNumber);
 
@@ -233,8 +233,8 @@ function assessProcessRisk(portObj) {
   }
 
   // 2. Medium Risk
-  const isApp = processName.includes('chrome') || processName.includes('firefox') || processName.includes('safari') || 
-                processName.includes('browser') || processName.includes('slack') || processName.includes('spotify') || 
+  const isApp = processName.includes('chrome') || processName.includes('firefox') || processName.includes('safari') ||
+                processName.includes('browser') || processName.includes('slack') || processName.includes('spotify') ||
                 processName.includes('electron') || processName.includes('discord');
 
   if (isApp) {
@@ -248,7 +248,7 @@ function assessProcessRisk(portObj) {
 
   // 3. Low Risk
   const isDev = [80, 443, 3000, 5000, 5173, 8000, 8080, 9000].includes(portNumber) ||
-                processName.includes('node') || processName.includes('npm') || processName.includes('python') || 
+                processName.includes('node') || processName.includes('npm') || processName.includes('python') ||
                 processName.includes('vite') || processName.includes('ruby') || processName.includes('go');
 
   if (isDev) {
@@ -304,7 +304,7 @@ const elements = {
   filterTabs: document.querySelectorAll('.filter-tab'),
   emptyState: document.getElementById('empty-state'),
   toastContainer: document.getElementById('toast-container'),
-  
+
   // Info Hub Modal Selectors
   infoModal: document.getElementById('info-modal'),
   infoCloseBtn: document.getElementById('info-close-btn'),
@@ -359,7 +359,7 @@ const elements = {
   updateStatus: document.getElementById('update-status'),
   updateButton: document.getElementById('update-button'),
   copyrightYear: document.getElementById('copyright-year'),
-  
+
   // Warning Banner
   warningBanner: document.getElementById('warning-banner'),
   warningMessage: document.getElementById('warning-message'),
@@ -559,7 +559,7 @@ function renderRecentActions() {
 
   if (elements.recentActionsPanel) elements.recentActionsPanel.classList.remove('hidden');
   elements.recentActionsList.innerHTML = '';
-  
+
   if (elements.recentActionsBadge) {
     elements.recentActionsBadge.textContent = actions.length;
     elements.recentActionsBadge.classList.remove('hidden');
@@ -719,7 +719,7 @@ function setupEventListeners() {
       const column = th.dataset.sort;
       const order = currentSort.column === column && currentSort.order === 'asc' ? 'desc' : 'asc';
       currentSort = { column, order };
-      
+
       // Update header indicators
       document.querySelectorAll('.ports-table th.sortable .sort-indicator').forEach(ind => {
         ind.textContent = '▲';
@@ -873,7 +873,7 @@ function setupEventListeners() {
         showToast('פורט לא תקין. נא להקליד מספר בין 1 ל-65535', 'error');
         return;
       }
-      
+
       // Look for the port in portsData
       const foundPort = portsData.find(p => Number(p.port) === portNum || (p.ports && p.ports.includes(portNum)));
       if (foundPort) {
@@ -993,7 +993,7 @@ async function fetchPorts() {
     </tr>
   `;
   elements.emptyState.classList.add('hidden');
-  
+
   try {
     const response = await fetch('/api/ports?bypassCache=true');
     if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
@@ -1047,7 +1047,7 @@ async function fetchSystemProcesses() {
     </tr>
   `;
   elements.emptyState.classList.add('hidden');
-  
+
   try {
     const response = await fetch('/api/system/processes');
     if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
@@ -1071,7 +1071,7 @@ async function fetchSystemProcesses() {
 function updateTableHeaders() {
   const headers = document.querySelectorAll('.ports-table th');
   if (headers.length < 8) return;
-  
+
   if (activeFilter === 'system-resources') {
     headers[0].innerHTML = '-';
     headers[0].classList.remove('sortable');
@@ -1081,7 +1081,7 @@ function updateTableHeaders() {
     headers[5].classList.remove('sortable');
     headers[6].innerHTML = 'משאבים';
     headers[6].classList.remove('sortable');
-    
+
     // Hide sort indicators for non-sortable columns
     headers.forEach((th, idx) => {
       if (idx !== 1 && idx !== 2 && idx !== 3) {
@@ -1096,7 +1096,7 @@ function updateTableHeaders() {
     headers[4].innerHTML = 'פרוטוקול / סוג';
     headers[5].innerHTML = 'גישה';
     headers[6].innerHTML = 'פקודת הפעלה';
-    
+
     // Restore sort indicators
     headers.forEach(th => {
       const ind = th.querySelector('.sort-indicator');
@@ -1112,7 +1112,7 @@ function applyFilters() {
   if (activeFilter === 'system-resources') {
     filteredProcesses = systemProcessesData.filter(proc => matchSmartQuery(proc, searchQuery, false));
     updateResultsSummary(filteredProcesses.length);
-    
+
     sortAndRender();
     return;
   }
@@ -1160,7 +1160,7 @@ function updateMetrics() {
   if (elements.statusTextConnections) {
     elements.statusTextConnections.textContent = activeCount;
   }
-  
+
   if (elements.tabBadgePorts) {
     elements.tabBadgePorts.textContent = activeCount;
     if (activeCount > 0) {
@@ -1193,23 +1193,23 @@ function sortAndRender() {
   if (activeFilter === 'system-resources') {
     const col = currentSort.column;
     const isAsc = currentSort.order === 'asc' ? 1 : -1;
-    
+
     // Default to 'cpu' if sorting on 'port' which doesn't exist on processes
     let sortCol = col;
     if (col === 'port') sortCol = 'cpu';
-    
+
     filteredProcesses.sort((a, b) => {
       let valA = a[sortCol];
       let valB = b[sortCol];
-      
+
       if (typeof valA === 'string') valA = valA.toLowerCase();
       if (typeof valB === 'string') valB = valB.toLowerCase();
-      
+
       if (valA < valB) return -1 * isAsc;
       if (valA > valB) return 1 * isAsc;
       return 0;
     });
-    
+
     renderSystemProcessesTable();
     return;
   }
@@ -1253,10 +1253,10 @@ function renderSystemProcessesTable() {
     if (proc.isSystem) {
       actionsHtml = `<span class="badge badge-system-lock">מוגן מערכת</span>`;
     } else {
-      const killTitle = isReadOnlyMode 
+      const killTitle = isReadOnlyMode
         ? 'שרת מנהל הפורטים נמצא במצב "קריאה בלבד". שנה את מצב הבטיחות בהגדרות כדי לאפשר סגירה.'
         : `סגור תהליך PID ${proc.pid} (נדרש אישור)`;
-        
+
       const pauseResumeBtn = proc.isSuspended
         ? `<button class="action-btn btn-success btn-sm btn-resume-proc" title="המשך פעילות תהליך ${pidText}">המשך</button>`
         : `<button class="action-btn btn-warning btn-sm btn-pause-proc" title="השהה פעילות תהליך ${pidText}">השהיה</button>`;
@@ -1297,10 +1297,10 @@ function renderSystemProcessesTable() {
       if (resumeBtn) {
         resumeBtn.addEventListener('click', () => resumeSystemProcess(proc.pid));
       }
-      
+
       const pauseBtn = tr.querySelector('.btn-pause-proc');
       if (pauseBtn) {
-        pauseBtn.addEventListener('click', () => suspendSystemProcess(proc.pid));
+        pauseBtn.addEventListener('click', () => openSuspendConfirmModal(proc));
       }
 
       const killBtn = tr.querySelector('.btn-kill-proc');
@@ -1330,7 +1330,7 @@ function renderTable() {
     if (tableView) tableView.classList.add('hidden');
     if (cardsView) cardsView.classList.remove('hidden');
     if (simpleSummaryStrip) simpleSummaryStrip.classList.remove('hidden');
-    
+
     if (activeFilter === 'system-resources') {
       renderCompactSimpleSystemProcesses();
     } else {
@@ -1366,7 +1366,7 @@ function renderTable() {
     const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
     const isAggregate = portObj.isAggregate === true;
     const killDisabled = isAggregate || isSelf || isSystemProcess || isReadOnlyMode;
-    
+
     // Safety disable reasons in Hebrew
     // Self-protection: this is the Port Manager UI server
     // System-process protection
@@ -1389,7 +1389,7 @@ function renderTable() {
       const isPNumSelf = pNumber === selfPort;
       let badgeClass = 'port-badge';
       let safetyClass = '';
-      
+
       if (isPNumSelf) {
         badgeClass += ' self';
         safetyClass = ' self';
@@ -1411,7 +1411,7 @@ function renderTable() {
       if (safetyClass && safetyClass !== ' self' && safetyClass !== ' system') {
         badgeClass += ' ' + safetyClass;
       }
-      
+
       if (isPNumSelf) {
         return `<span class="${badgeClass}">${pNum}<span class="self-tag">SELF</span></span>`;
       }
@@ -1505,11 +1505,14 @@ function renderTable() {
 // --- ACTIONS & MODALS ---
 function openConfirmModal(action, portObj) {
   stopPolling();
-  
+
   // Show standard process preview and warning
   const modalWarning = document.getElementById('modal-warning');
   const previewBox = document.querySelector('.process-preview-box');
-  if (modalWarning) modalWarning.style.display = 'block';
+  if (modalWarning) {
+    modalWarning.style.display = 'block';
+    modalWarning.innerHTML = '⚠️ <strong>אזהרה:</strong> סגירת תוכנה השייכת לפורט פעיל שולחת אות סיום (SIGTERM) שעלולה לגרום לאובדן נתונים שלא נשמרו.';
+  }
   if (previewBox) previewBox.style.display = 'block';
 
   // Clean elements
@@ -1541,7 +1544,7 @@ function openConfirmModal(action, portObj) {
     elements.modalDesc.innerHTML = `פעולה זו תשלח אות כיבוי (<code>SIGTERM</code>) למזהה תהליך (PID) <strong>${portObj.pid}</strong>${portDesc}. סגור את התוכנה רק אם אתה בטוח שהיא אינה חיונית לפעילותך.`;
     elements.modalConfirmBtn.textContent = 'סגור תוכנה (Terminate)';
     elements.modalConfirmBtn.className = 'btn btn-danger';
-    
+
     const confirmHelp = document.getElementById('confirm-help');
     if (risk.level === 'low') {
       if (confirmHelp) confirmHelp.style.display = 'none';
@@ -1550,17 +1553,17 @@ function openConfirmModal(action, portObj) {
       if (confirmHelp) confirmHelp.style.display = 'block';
       elements.modalConfirmBtn.disabled = true;
     }
-    
+
     // Set confirmation button callback
     elements.modalConfirmBtn.onclick = async () => {
       if (!validateDestructiveConfirmation(portObj)) return;
       elements.modalConfirmBtn.disabled = true;
       elements.modalConfirmBtn.textContent = 'סוגר תהליך...';
-      
+
       const success = await executeKill(portObj.pid, portObj.port);
       elements.confirmModal.classList.add('hidden');
       resetDestructiveConfirmation();
-      
+
       if (success) {
         if (activeFilter === 'system-resources') {
           fetchSystemProcesses();
@@ -1598,6 +1601,46 @@ function resetDestructiveConfirmation() {
   if (riskBanner) riskBanner.style.display = 'none';
 }
 
+function openSuspendConfirmModal(process) {
+  stopPolling();
+  resetDestructiveConfirmation();
+
+  const modalWarning = document.getElementById('modal-warning');
+  const previewBox = document.querySelector('.process-preview-box');
+  const confirmHelp = document.getElementById('confirm-help');
+  if (modalWarning) {
+    modalWarning.style.display = 'block';
+    modalWarning.innerHTML = '⚠️ <strong>אזהרה:</strong> השבתת התהליך עשויה להפסיק עבודה שטרם נשמרה. ניתן להמשיך את הפעילות אחר כך.';
+  }
+  if (previewBox) previewBox.style.display = 'block';
+  if (confirmHelp) confirmHelp.style.display = 'none';
+
+  elements.previewPort.textContent = '-';
+  elements.previewProcess.textContent = process.processName;
+  elements.previewPid.textContent = process.pid;
+  elements.previewCommand.textContent = process.commandLine || process.processName;
+  destructiveActionContext = { action: 'suspend', pid: String(process.pid) };
+  elements.modalTitle.textContent = 'אישור השהיית תהליך';
+  elements.modalDesc.textContent = `האם להשהות את ${process.processName} (PID ${process.pid})?`;
+  elements.modalConfirmBtn.textContent = 'השהה תהליך';
+  elements.modalConfirmBtn.className = 'btn btn-danger';
+  elements.modalConfirmBtn.disabled = false;
+  elements.modalConfirmBtn.onclick = async () => {
+    elements.modalConfirmBtn.disabled = true;
+    elements.modalConfirmBtn.textContent = 'משהה תהליך...';
+    const success = await suspendSystemProcess(process.pid);
+    if (success) {
+      elements.confirmModal.classList.add('hidden');
+      resetDestructiveConfirmation();
+    } else {
+      elements.modalConfirmBtn.disabled = false;
+      elements.modalConfirmBtn.textContent = 'השהה תהליך';
+    }
+  };
+
+  elements.confirmModal.classList.remove('hidden');
+}
+
 function validateDestructiveConfirmation(portObj = null) {
   const activeAction = portObj && typeof portObj.pid !== 'undefined'
     ? 'kill'
@@ -1605,7 +1648,7 @@ function validateDestructiveConfirmation(portObj = null) {
   const requiredPid = portObj && typeof portObj.pid !== 'undefined'
     ? String(portObj.pid)
     : destructiveActionContext?.pid || elements.confirmRequiredPid.textContent;
-  
+
   const riskLevel = portObj ? assessProcessRisk(portObj).level : destructiveActionContext?.riskLevel;
   if (riskLevel === 'low') {
     elements.modalConfirmBtn.disabled = false;
@@ -1668,10 +1711,10 @@ async function executeKill(pid, port) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    
+
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || data.error || 'שגיאה בסגירת התהליך בשרת');
-    
+
     const msg = isSystemKill ? `תהליך ${pid} נסגר בהצלחה!` : `תהליך ${pid} בפורט ${port} נסגר בהצלחה!`;
     showToast(msg, 'success');
     logRecentAction('kill', isSystemKill ? `PID ${pid}` : `פורט ${port}`, isSystemKill ? `מזהה תהליך: ${pid}` : `מזהה תהליך: ${pid}`);
@@ -1689,7 +1732,7 @@ function updateProgressRing(circleElement, percentage) {
   circleElement.style.strokeDasharray = `${circumference} ${circumference}`;
   const offset = circumference - (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
   circleElement.style.strokeDashoffset = offset;
-  
+
   // Update progress color based on usage
   if (percentage > 80) {
     circleElement.style.stroke = '#ff4b4b'; // Rose Red
@@ -1706,13 +1749,13 @@ async function updateSystemUsage() {
     const res = await fetch('/api/system/usage');
     if (!res.ok) return;
     const data = await res.json();
-    
+
     // Update metric display
     if (elements.statusTextCpu) {
       elements.statusTextCpu.textContent = `${data.cpu.toFixed(1)}%`;
     }
     updateProgressRing(elements.statusRingCpu, data.cpu);
-    
+
     if (elements.statusTextMemory) {
       const usedGb = (data.memory.usedBytes / (1024 ** 3)).toFixed(1);
       const totalGb = (data.memory.totalBytes / (1024 ** 3)).toFixed(0);
@@ -1781,13 +1824,13 @@ async function executeTrashCache(path) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, confirm: true })
     });
-    
+
     const data = await res.json();
     if (!res.ok) {
       const errMsg = data.error?.message || data.error || 'שגיאה במחיקת התיקייה';
       throw new Error(errMsg);
     }
-    
+
     showToast(`תיקיית ה-Cache בנתיב ${path} הועברה לפח האשפה בהצלחה!`, 'success');
     logRecentAction('trash-cache', path.split('/').pop() || path, `נתיב: ${path}`);
     return true;
@@ -1804,13 +1847,13 @@ async function executeTrashCachesBatch(paths) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ paths, confirm: true })
     });
-    
+
     const data = await res.json();
     if (!res.ok) {
       const errMsg = data.error?.message || data.error || 'שגיאה בניקוי התיקיות';
       throw new Error(errMsg);
     }
-    
+
     showToast(`הועברו בהצלחה ${paths.length} תיקיות לפח האשפה!`, 'success');
     logRecentAction('clean-cache', `${paths.length} תיקיות`, `ניקוי מרוכז של תיקיות Cache`);
     return true;
@@ -1867,13 +1910,13 @@ async function confirmSafeCleanWizard() {
   elements.safeCleanWizardNext.disabled = false;
   if (success) {
     closeSafeCleanWizard();
-    await updateStorageUsage();
+    await updateStorageUsage({ force: true });
   }
 }
 
 function openCacheConfirmModal(cacheItem) {
   stopPolling();
-  
+
   // Hide process preview and process termination warnings
   const modalWarning = document.getElementById('modal-warning');
   const previewBox = document.querySelector('.process-preview-box');
@@ -1888,7 +1931,7 @@ function openCacheConfirmModal(cacheItem) {
 
   // Set context
   destructiveActionContext = { action: 'trash-cache', path: cacheItem.path };
-  
+
   // Hide confirm gate
   const confirmHelp = document.getElementById('confirm-help');
   if (confirmHelp) confirmHelp.style.display = 'none';
@@ -1903,16 +1946,16 @@ function openCacheConfirmModal(cacheItem) {
   elements.modalConfirmBtn.onclick = async () => {
     elements.modalConfirmBtn.disabled = true;
     elements.modalConfirmBtn.textContent = 'מעביר לפח האשפה...';
-    
+
     const success = await executeTrashCache(cacheItem.path);
     elements.confirmModal.classList.add('hidden');
-    
+
     // Restore confirm-help display style
     if (confirmHelp) confirmHelp.style.display = 'block';
     resetDestructiveConfirmation();
-    
+
     if (success) {
-      updateStorageUsage();
+      updateStorageUsage({ force: true });
     } else {
       startPolling();
     }
@@ -1932,7 +1975,7 @@ async function updateStorageUsage({ force = false } = {}) {
   if (staleUsage) renderStorageUsage(staleUsage);
 
   elements.storageRefreshBtn.disabled = true;
-  
+
   // Show skeleton loader
   if (!document.getElementById('skeleton-styles')) {
     const style = document.createElement('style');
@@ -1949,7 +1992,7 @@ async function updateStorageUsage({ force = false } = {}) {
     `;
     document.head.appendChild(style);
   }
-  
+
   elements.cacheFindings.innerHTML = `
     <div class="cache-item-row skeleton-row" style="pointer-events: none; border-color: rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.02); padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 8px;">
       <div style="flex-grow: 1;">
@@ -2115,8 +2158,8 @@ function filterAndRenderCache() {
 
   // 1. Search Query filter
   if (cacheSearchQuery) {
-    items = items.filter(item => 
-      item.name.toLowerCase().includes(cacheSearchQuery) || 
+    items = items.filter(item =>
+      item.name.toLowerCase().includes(cacheSearchQuery) ||
       item.path.toLowerCase().includes(cacheSearchQuery)
     );
   }
@@ -2181,19 +2224,19 @@ async function renderWarningBanner(usage) {
     const res = await fetch('/api/system/processes');
     if (!res.ok) return;
     const { processes } = await res.json();
-    
+
     // Find top 1-2 non-system user processes
     const heavyProcs = processes
       .filter(p => !p.isSystem && !p.isSuspended)
       .slice(0, 2);
-      
+
     if (heavyProcs.length === 0) {
       if (elements.warningBanner) {
         elements.warningBanner.classList.add('hidden');
       }
       return;
     }
-    
+
     if (elements.warningBanner) {
       elements.warningBanner.classList.remove('hidden');
     }
@@ -2204,13 +2247,13 @@ async function renderWarningBanner(usage) {
       if (usage.memory.percentage > 80) overloaded.push(`זיכרון ${usage.memory.percentage}%`);
       elements.warningMessage.textContent = `עומס גבוה: ${overloaded.join(' · ')}. בדוק את התהליכים הבאים לפני סגירה או השהיה.`;
     }
-    
+
     if (elements.warningSuggestions) {
       elements.warningSuggestions.innerHTML = '';
       heavyProcs.forEach(proc => {
         const card = document.createElement('div');
         card.className = 'suggestion-card';
-        
+
         card.innerHTML = `
           <div class="suggestion-info">
             <h4 style="margin: 0; font-size: 0.95rem;">${escapeHtml(proc.processName)} (PID: ${proc.pid})</h4>
@@ -2221,10 +2264,10 @@ async function renderWarningBanner(usage) {
             <button class="btn btn-sm btn-danger btn-kill-suggest" data-pid="${proc.pid}">❌ סגור</button>
           </div>
         `;
-        
+
         // Hook up buttons
         card.querySelector('.btn-pause-suggest').addEventListener('click', () => {
-          suspendSystemProcess(proc.pid);
+          openSuspendConfirmModal(proc);
         });
         card.querySelector('.btn-kill-suggest').addEventListener('click', () => {
           openConfirmModal('kill', {
@@ -2234,14 +2277,14 @@ async function renderWarningBanner(usage) {
             port: '-'
           });
         });
-        
+
         elements.warningSuggestions.appendChild(card);
       });
     }
-    
+
     if (elements.quickCleanBtn) {
       elements.quickCleanBtn.onclick = async () => {
-        const confirmMessage = `האם אתה בטוח שברצונך לסגור את כל (${heavyProcs.length}) התהליכים הכבדים שזוהו?\n` + 
+        const confirmMessage = `האם אתה בטוח שברצונך לסגור את כל (${heavyProcs.length}) התהליכים הכבדים שזוהו?\n` +
           heavyProcs.map(p => `- ${p.processName} (PID: ${p.pid})`).join('\n');
         if (confirm(confirmMessage)) {
           for (const proc of heavyProcs) {
@@ -2279,8 +2322,10 @@ async function suspendSystemProcess(pid) {
     } else {
       fetchPorts();
     }
+    return true;
   } catch (err) {
     showToast(err.message, 'error');
+    return false;
   }
 }
 
@@ -2522,7 +2567,8 @@ function createSimpleSystemProcessRow(process) {
   const status = process.isSuspended ? 'מושהה' : 'פעיל';
   const actionHtml = isProtected
     ? '<span class="simple-port-protected">🔒 מוגן מערכת</span>'
-    : `<button class="simple-port-stop-btn btn-kill-proc" type="button" ${isReadOnlyMode ? 'disabled' : ''}>כבה תהליך</button>`;
+    : `<button class="simple-port-pause-btn ${process.isSuspended ? 'btn-resume-simple' : 'btn-pause-simple'}" type="button">${process.isSuspended ? 'המשך' : 'השהיה'}</button>
+       <button class="simple-port-stop-btn btn-kill-proc" type="button" ${isReadOnlyMode ? 'disabled' : ''}>כבה תהליך</button>`;
 
   row.className = `simple-port-row simple-process-row${isProtected ? ' is-system' : ''}`;
   row.setAttribute('role', 'listitem');
@@ -2553,6 +2599,15 @@ function createSimpleSystemProcessRow(process) {
         port: '-'
       });
     });
+  }
+
+  const pauseBtn = row.querySelector('.btn-pause-simple');
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', () => openSuspendConfirmModal(process));
+  }
+  const resumeBtn = row.querySelector('.btn-resume-simple');
+  if (resumeBtn) {
+    resumeBtn.addEventListener('click', () => resumeSystemProcess(process.pid));
   }
 
   return row;
@@ -2636,7 +2691,7 @@ function setupViewModeToggle() {
   function setMode(mode) {
     viewMode = mode;
     localStorage.setItem('viewMode', mode);
-    
+
     if (mode === 'simple') {
       document.body.classList.add('view-simple');
       document.body.classList.remove('view-detailed');

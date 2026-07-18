@@ -162,7 +162,7 @@ function createPortService(options = {}) {
       this.data.clear();
     }
   };
-  
+
   const portsCache = {
     data: null,
     timestamp: 0,
@@ -673,7 +673,7 @@ function createPortService(options = {}) {
     ];
 
     let items = [];
-    
+
     // Check global/local specific paths
     for (const item of globalCaches) {
       try {
@@ -761,7 +761,7 @@ function createPortService(options = {}) {
       const paths = items.map(i => i.path);
       try {
         const sizeMap = await getSizesForPaths(paths);
-        
+
         items = items.map(item => {
           const normPath = path.normalize(item.path);
           return {
