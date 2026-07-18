@@ -270,8 +270,9 @@ function createPortService(options = {}) {
     }
 
     let metricsMap = new Map();
+    const portPids = [...new Set(ports.map(port => port.pid).filter(Number.isInteger))];
     try {
-      const systemProcesses = await getSystemProcesses();
+      const systemProcesses = portPids.length > 0 ? await getSystemProcesses({ pids: portPids }) : [];
       for (const proc of systemProcesses) {
         metricsMap.set(proc.pid, { cpu: proc.cpu, memoryMb: proc.memoryMb });
       }
@@ -525,11 +526,16 @@ function createPortService(options = {}) {
     };
   }
 
-  async function getSystemProcesses({ pid } = {}) {
+  async function getSystemProcesses({ pid, pids } = {}) {
+    const requestedPids = pid !== undefined
+      ? [pid]
+      : Array.isArray(pids)
+        ? [...new Set(pids.filter(Number.isInteger))]
+        : null;
     const args = ['-A', '-o', 'pcpu,rss,state,pid,user,comm'];
-    if (pid !== undefined) {
+    if (requestedPids !== null) {
       args[0] = '-p';
-      args.splice(1, 0, String(pid));
+      args.splice(1, 0, requestedPids.join(','));
     }
     const { stdout } = await runner.execFile('ps', args, { allowNonZero: true });
     const lines = stdout.trim().split('\n').slice(1);
@@ -565,7 +571,7 @@ function createPortService(options = {}) {
       processes.push(procObj);
     }
 
-    if (pid !== undefined) {
+    if (requestedPids !== null) {
       return processes;
     }
 

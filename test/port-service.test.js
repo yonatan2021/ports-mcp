@@ -176,6 +176,34 @@ test('listPorts enriches results with isSystem', async () => {
   assert.equal(ports[1].isSystem, true);
   });
 
+test('listPorts includes resource metrics for listening processes outside the system-process top 50', async () => {
+  const psLines = Array.from({ length: 50 }, (_value, index) =>
+    `  ${100 - index}.0  1024 S   ${2000 + index} yoni /usr/bin/busy-${index}`
+  );
+  psLines.push('  0.2  524288 S   12345 yoni /usr/local/bin/node');
+  const runner = {
+    execFile: async (file, args) => {
+      if (file === 'ps') {
+        return {
+          stdout: ` %CPU   RSS STAT   PID USER COMM\n${psLines.join('\n')}\n`,
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      throw new Error(`unexpected call ${file} ${args.join(' ')}`);
+    },
+  };
+  const service = createPortService({
+    runner,
+    listPorts: async () => [{ port: 3000, pid: 12345, processName: 'node', user: 'yoni' }],
+  });
+
+  const [port] = await service.listPorts();
+
+  assert.equal(port.cpu, 0.2);
+  assert.equal(port.memoryMb, 512);
+});
+
   test('getSystemUsage returns CPU and memory statistics', async () => {
     const service = createPortService();
   const usage = await service.getSystemUsage();
@@ -361,7 +389,6 @@ test('portsCache is invalidated on process/port kill, suspend, and resume', asyn
   await service.listPorts();
   assert.equal(callCount, 5); // Increased
 });
-
 
 
 
