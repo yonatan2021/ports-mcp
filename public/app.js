@@ -139,7 +139,7 @@ function matchSmartQuery(item, query, isPortObj = true) {
   const name = (item.processName || '').toLowerCase();
   const cmd = (item.commandLine || '').toLowerCase();
   const user = (item.user || '').toLowerCase();
-  
+
   let directMatch = pidStr.includes(query) ||
                     name.includes(query) ||
                     cmd.includes(query) ||
@@ -594,7 +594,7 @@ function setupRecentActions() {
     const isExpanded = elements.recentActionsToggle.getAttribute('aria-expanded') === 'true';
     elements.recentActionsToggle.setAttribute('aria-expanded', !isExpanded);
     elements.recentActionsContent.classList.toggle('hidden', isExpanded);
-    
+
     const arrow = elements.recentActionsToggle.querySelector('.accordion-arrow');
     if (arrow) {
       arrow.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
@@ -1313,9 +1313,9 @@ function renderTable() {
     if (simpleSummaryStrip) simpleSummaryStrip.classList.remove('hidden');
     
     if (activeFilter === 'system-resources') {
-      renderSimpleSystemProcesses();
+      renderCompactSimpleSystemProcesses();
     } else {
-      renderSimpleCards();
+      renderCompactSimplePorts();
     }
     return;
   }
@@ -2365,10 +2365,251 @@ window.showToast = showToast;
 
 // --- UX REDESIGN SIMPLE VIEW IMPLEMENTATION ---
 
+function getSimpleResourceSummary(processes) {
+  const cpu = processes.reduce((sum, process) => sum + Number(process.cpu || 0), 0);
+  const memoryMb = processes.reduce((sum, process) => sum + Number(process.memoryMb || 0), 0);
+  return { cpu: cpu.toFixed(1), memoryMb: memoryMb.toFixed(1) };
+}
+
+function createSimplePortSection(category, createRow) {
+  const section = document.createElement('section');
+  section.className = 'simple-port-section';
+
+  const storedState = sessionStorage.getItem(category.sessionKey);
+  const isExpanded = storedState === null ? category.defaultExpanded : storedState === 'true';
+  const metrics = getSimpleResourceSummary(category.ports);
+
+  section.innerHTML = `
+    <button class="simple-port-section-toggle" id="${category.id}-toggle" type="button"
+      aria-expanded="${isExpanded}" aria-controls="${category.id}-content">
+      <span class="simple-port-section-summary">
+        <span class="simple-port-section-title">${category.title}</span>
+        <span class="simple-port-section-count">${category.ports.length} פעילים</span>
+        <span class="simple-port-section-metrics" dir="ltr">⚡ ${metrics.cpu}% · 💾 ${metrics.memoryMb} MB</span>
+      </span>
+      <svg class="simple-port-section-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <div class="simple-port-section-content" id="${category.id}-content" ${isExpanded ? '' : 'hidden'}>
+      <div class="simple-port-list" role="list"></div>
+    </div>
+  `;
+
+  const toggle = section.querySelector('.simple-port-section-toggle');
+  const content = section.querySelector('.simple-port-section-content');
+  const list = section.querySelector('.simple-port-list');
+
+  category.ports.forEach((port) => list.appendChild(createRow(port)));
+
+  toggle.addEventListener('click', () => {
+    const nextExpanded = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(nextExpanded));
+    content.hidden = !nextExpanded;
+    sessionStorage.setItem(category.sessionKey, String(nextExpanded));
+  });
+
+  return section;
+}
+
+function appendSimplePortSection(container, category, createRow) {
+  if (category.ports.length === 0) return;
+  container.appendChild(createSimplePortSection(category, createRow));
+}
+
+function createSimplePortRow(portObj) {
+  const row = document.createElement('div');
+  const portNumber = Number(portObj.port);
+  const portText = escapeHtml((portObj.ports || [portObj.port]).join(', '));
+  const pidText = escapeHtml((portObj.pids || [portObj.pid]).join(', '));
+  const isSelf = Boolean(portObj.isSelf) || portNumber === selfPort;
+  const isSystemProcess = portObj.isSystem === true;
+  const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
+  const isAggregate = portObj.isAggregate === true;
+  const killDisabled = isAggregate || isSelf || isSystemProcess || isReadOnlyMode;
+  const processIcon = getProcessIcon(portObj.processName);
+  const appName = getFriendlyAppName(portObj);
+  const sourceInfo = getSourceInfo(portObj);
+  const listenerInfo = getListenerInfo(portObj);
+  const cpu = Number(portObj.cpu || 0).toFixed(1);
+  const memoryMb = Number(portObj.memoryMb || 0).toFixed(1);
+  const portDesc = PORT_DESCRIPTIONS[portNumber] || (isSystemProcess ? 'שירות מערכת macOS' : 'תהליך ריצה');
+
+  const hasSourcePath = sourceInfo.path && sourceInfo.path !== 'לא זמין' && sourceInfo.path !== '/';
+  let sourceDisplay = sourceInfo.label;
+  if (hasSourcePath) {
+    const pathSegments = sourceInfo.path.split('/').filter(Boolean);
+    sourceDisplay = pathSegments.slice(-2).join('/') || sourceInfo.path;
+  }
+
+  const safetyBadgeHtml = listenerInfo.label === 'מקומי בלבד'
+    ? '<span class="simple-port-safety safe">🔒 מקומי בלבד</span>'
+    : '<span class="simple-port-safety exposed">🌐 פתוח לרשת</span>';
+
+  const isHttpPort = [80, 443, 3000, 5000, 5173, 8000, 8080, 9000].includes(portNumber);
+  const openBrowserBtnHtml = isHttpPort && !isSystemProcess
+    ? `<a href="${portNumber === 443 ? 'https' : 'http'}://localhost:${portNumber}" target="_blank" rel="noopener noreferrer" class="simple-port-browser-link">פתח בדפדפן</a>`
+    : '';
+
+  let actionBtnHtml = '';
+  if (isSelf) {
+    actionBtnHtml = '<span class="simple-port-protected">🔌 מנהל הפורטים (פעיל)</span>';
+  } else if (isSystemProcess) {
+    actionBtnHtml = '<span class="simple-port-protected">🛡️ מוגן על ידי macOS</span>';
+  } else {
+    actionBtnHtml = `<button class="simple-port-stop-btn port-card-kill-btn" type="button" ${killDisabled ? 'disabled' : ''} title="${killDisabled ? 'סגירה חסומה' : 'עצור פעילות אפליקציה'}">עצור אפליקציה</button>`;
+  }
+
+  row.className = `simple-port-row${isSelf ? ' is-self' : ''}${isSystemProcess ? ' is-system' : ''}`;
+  row.setAttribute('role', 'listitem');
+  row.innerHTML = `
+    <div class="simple-port-row-primary">
+      <span class="simple-port-row-icon" aria-hidden="true">${processIcon}</span>
+      <div class="simple-port-row-identity">
+        <strong class="simple-port-row-title" dir="ltr">${escapeHtml(appName)}</strong>
+        <span class="simple-port-row-description">${escapeHtml(portDesc)}</span>
+      </div>
+      <span class="simple-port-port" dir="ltr">פורט ${portText}</span>
+    </div>
+    <div class="simple-port-row-meta">
+      ${safetyBadgeHtml}
+      <span class="simple-port-meta-item" title="${escapeHtml(sourceInfo.path)}" ${hasSourcePath ? 'dir="ltr"' : ''}>📁 ${escapeHtml(sourceDisplay)}</span>
+      <span class="simple-port-meta-item" dir="ltr">PID ${pidText}</span>
+      <span class="simple-port-meta-item" dir="ltr">⚡ ${cpu}%</span>
+      <span class="simple-port-meta-item" dir="ltr">💾 ${memoryMb} MB</span>
+    </div>
+    <div class="simple-port-row-actions">
+      ${openBrowserBtnHtml}
+      <button class="simple-port-details-btn btn-details-action" type="button">פרטים טכניים</button>
+      ${actionBtnHtml}
+    </div>
+  `;
+
+  row.querySelector('.btn-details-action').addEventListener('click', () => openDetailsModal(portObj));
+  const killBtn = row.querySelector('.port-card-kill-btn');
+  if (killBtn && !killDisabled) {
+    killBtn.addEventListener('click', () => openConfirmModal('kill', portObj));
+  }
+
+  return row;
+}
+
+function createSimpleSystemProcessRow(process) {
+  const row = document.createElement('div');
+  const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
+  const isProtected = process.isSystem === true;
+  const status = process.isSuspended ? 'מושהה' : 'פעיל';
+  const actionHtml = isProtected
+    ? '<span class="simple-port-protected">🔒 מוגן מערכת</span>'
+    : `<button class="simple-port-stop-btn btn-kill-proc" type="button" ${isReadOnlyMode ? 'disabled' : ''}>כבה תהליך</button>`;
+
+  row.className = `simple-port-row simple-process-row${isProtected ? ' is-system' : ''}`;
+  row.setAttribute('role', 'listitem');
+  row.innerHTML = `
+    <div class="simple-port-row-primary">
+      <span class="simple-port-row-icon" aria-hidden="true">${getProcessIcon(process.processName)}</span>
+      <div class="simple-port-row-identity">
+        <strong class="simple-port-row-title" dir="ltr">${escapeHtml(process.processName)}</strong>
+        <span class="simple-port-row-description">משתמש: ${escapeHtml(process.user || 'לא זמין')}</span>
+      </div>
+    </div>
+    <div class="simple-port-row-meta">
+      <span class="simple-port-safety ${process.isSuspended ? 'exposed' : 'safe'}">סטטוס: ${status}</span>
+      <span class="simple-port-meta-item" dir="ltr">PID ${escapeHtml(String(process.pid))}</span>
+      <span class="simple-port-meta-item" dir="ltr">⚡ ${Number(process.cpu || 0).toFixed(1)}%</span>
+      <span class="simple-port-meta-item" dir="ltr">💾 ${Number(process.memoryMb || 0).toFixed(1)} MB</span>
+    </div>
+    <div class="simple-port-row-actions">${actionHtml}</div>
+  `;
+
+  const killBtn = row.querySelector('.btn-kill-proc');
+  if (killBtn && !isReadOnlyMode) {
+    killBtn.addEventListener('click', () => {
+      openConfirmModal('kill', {
+        pid: process.pid,
+        processName: process.processName,
+        commandLine: process.commandLine || process.processName,
+        port: '-'
+      });
+    });
+  }
+
+  return row;
+}
+
+function renderCompactSimpleSystemProcesses() {
+  const cardsContainer = document.getElementById('ports-cards-container');
+  cardsContainer.innerHTML = '';
+  if (filteredProcesses.length === 0) {
+    elements.emptyState.classList.remove('hidden');
+    return;
+  }
+
+  elements.emptyState.classList.add('hidden');
+  const simpleSummaryText = document.getElementById('simple-summary-text');
+  if (simpleSummaryText) simpleSummaryText.textContent = `מציג ${filteredProcesses.length} תהליכי מערכת ומשאבים.`;
+
+  appendSimplePortSection(cardsContainer, {
+    id: 'category-system-resources',
+    title: '⚙️ תהליכי מערכת ומשאבים',
+    ports: filteredProcesses,
+    defaultExpanded: true,
+    sessionKey: 'accordion_system_resources_expanded'
+  }, createSimpleSystemProcessRow);
+}
+
+function renderCompactSimplePorts() {
+  const cardsContainer = document.getElementById('ports-cards-container');
+  cardsContainer.innerHTML = '';
+  if (filteredPorts.length === 0) {
+    elements.emptyState.classList.remove('hidden');
+    return;
+  }
+
+  elements.emptyState.classList.add('hidden');
+  const userPorts = filteredPorts.filter((port) => !port.isSystem);
+  const systemPorts = filteredPorts.filter((port) => port.isSystem);
+  const simpleSummaryText = document.getElementById('simple-summary-text');
+  if (simpleSummaryText) simpleSummaryText.textContent = `מציג ${filteredPorts.length} תהליכים פעילים לפי קבוצה.`;
+
+  const categories = {
+    dev: { id: 'category-dev', title: '💻 אתרים ושרתי פיתוח מקומיים', ports: [], defaultExpanded: true, sessionKey: 'accordion_dev_expanded' },
+    db: { id: 'category-db', title: '🐘 מסדי נתונים ושירותי רקע', ports: [], defaultExpanded: false, sessionKey: 'accordion_db_expanded' },
+    apps: { id: 'category-apps', title: '🌐 אפליקציות ודפדפנים', ports: [], defaultExpanded: false, sessionKey: 'accordion_apps_expanded' },
+    other: { id: 'category-other', title: '⚙️ שירותים אחרים', ports: [], defaultExpanded: false, sessionKey: 'accordion_other_expanded' }
+  };
+
+  userPorts.forEach((portObj) => {
+    const name = (portObj.processName || '').toLowerCase();
+    const command = (portObj.commandLine || '').toLowerCase();
+    const portNumber = Number(portObj.port);
+    const description = PORT_DESCRIPTIONS[portNumber] || '';
+    const isDatabase = name.includes('postgres') || name.includes('pg') || name.includes('mysql') || name.includes('redis') || name.includes('mongo') || name.includes('elastic') || name.includes('sql') || name.includes('docker') || name.includes('dockerd') || [3306, 5432, 6379, 27017, 9200].includes(portNumber) || description.includes('נתונים') || description.includes('Redis');
+    const isApplication = name.includes('chrome') || name.includes('chromium') || name.includes('firefox') || name.includes('safari') || name.includes('browser') || name.includes('slack') || name.includes('spotify') || name.includes('electron') || name.includes('discord') || command.includes('.app/contents/macos/');
+    const isDevelopment = name.includes('node') || name.includes('npm') || name.includes('python') || name.includes('vite') || name.includes('ruby') || name.includes('go') || name.includes('gopls') || name.includes('port-manager') || name.includes('server.js') || [80, 443, 3000, 5000, 5173, 7000, 8000, 8080, 9000].includes(portNumber) || description.includes('פיתוח') || description.includes('שרת');
+
+    if (isDatabase) categories.db.ports.push(portObj);
+    else if (isApplication) categories.apps.ports.push(portObj);
+    else if (isDevelopment) categories.dev.ports.push(portObj);
+    else categories.other.ports.push(portObj);
+  });
+
+  if (activeFilter !== 'system') Object.values(categories).forEach((category) => appendSimplePortSection(cardsContainer, category, createSimplePortRow));
+  if (activeFilter !== 'user') {
+    appendSimplePortSection(cardsContainer, {
+      id: 'category-system',
+      title: '⚙️ תהליכי מערכת של macOS',
+      ports: systemPorts,
+      defaultExpanded: activeFilter === 'system',
+      sessionKey: 'accordion_system_expanded'
+    }, createSimplePortRow);
+  }
+}
+
 function setupViewModeToggle() {
   const btnSimple = document.getElementById('view-mode-simple');
   const btnDetailed = document.getElementById('view-mode-detailed');
-  
+
   if (!btnSimple || !btnDetailed) return;
 
   function setMode(mode) {
@@ -2390,7 +2631,7 @@ function setupViewModeToggle() {
       btnDetailed.classList.add('active');
       btnDetailed.setAttribute('aria-checked', 'true');
     }
-    
+
     // Rerender table / cards
     renderTable();
   }
@@ -2400,445 +2641,4 @@ function setupViewModeToggle() {
 
   // Set initial state
   setMode(viewMode);
-}
-
-function renderSimpleSystemProcesses() {
-  const tableView = document.getElementById('table-view-wrapper');
-  const cardsView = document.getElementById('cards-view-wrapper');
-  if (tableView) tableView.classList.add('hidden');
-  if (cardsView) cardsView.classList.remove('hidden');
-
-  const cardsContainer = document.getElementById('ports-cards-container');
-  cardsContainer.innerHTML = '';
-  
-  if (filteredProcesses.length === 0) {
-    elements.emptyState.classList.remove('hidden');
-    return;
-  }
-  elements.emptyState.classList.add('hidden');
-  
-  // Update simple status strip
-  const simpleSummaryText = document.getElementById('simple-summary-text');
-  if (simpleSummaryText) {
-    simpleSummaryText.textContent = `המחשב פועל בצורה תקינה. מציג ${filteredProcesses.length} תהליכי מערכת ומשאבים.`;
-  }
-  
-  filteredProcesses.forEach(proc => {
-    const card = document.createElement('div');
-    card.className = 'port-card';
-    const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
-    
-    let actionButtonHtml = '';
-    if (proc.isSystem) {
-      actionButtonHtml = `<span class="port-card-protected-label">🔒 מוגן מערכת</span>`;
-    } else {
-      actionButtonHtml = `
-        <button class="port-card-kill-btn btn-danger btn-kill-proc" ${isReadOnlyMode ? 'disabled' : ''} title="סגור תהליך במערכת">
-          כבה תהליך
-        </button>
-      `;
-    }
-    
-    const processIcon = getProcessIcon(proc.processName);
-    
-    card.innerHTML = `
-      <div class="port-card-header">
-        <span class="port-card-icon">${processIcon}</span>
-        <div class="port-card-info">
-          <strong class="port-card-title" dir="ltr">${escapeHtml(proc.processName)}</strong>
-          <span class="port-card-desc">משתמש: ${escapeHtml(proc.user)}</span>
-        </div>
-      </div>
-      <div class="port-card-body">
-        <div class="port-card-ports-row">
-          <span class="port-card-badge">PID ${proc.pid}</span>
-        </div>
-        <div class="port-card-safety-row">
-          <span class="port-card-safety-badge ${proc.isSuspended ? 'exposed' : 'safe'}">
-            סטטוס: ${proc.isSuspended ? 'מושהה' : 'פעיל'}
-          </span>
-        </div>
-        <div style="font-weight: 600; color: var(--color-primary); margin-top: 0.25rem;">
-          ${proc.cpu}% CPU · ${proc.memoryMb} MB RAM
-        </div>
-      </div>
-      <div class="port-card-footer" style="justify-content: flex-end;">
-        ${actionButtonHtml}
-      </div>
-    `;
-    
-    if (!proc.isSystem) {
-      const killBtn = card.querySelector('.btn-kill-proc');
-      if (killBtn && !isReadOnlyMode) {
-        killBtn.addEventListener('click', () => {
-          openConfirmModal('kill', {
-            pid: proc.pid,
-            processName: proc.processName,
-            commandLine: proc.commandLine || proc.processName,
-            port: '-'
-          });
-        });
-      }
-    }
-    
-    cardsContainer.appendChild(card);
-  });
-}
-
-function renderSimpleCards() {
-  const tableView = document.getElementById('table-view-wrapper');
-  const cardsView = document.getElementById('cards-view-wrapper');
-  if (tableView) tableView.classList.add('hidden');
-  if (cardsView) cardsView.classList.remove('hidden');
-
-  const cardsContainer = document.getElementById('ports-cards-container');
-  cardsContainer.innerHTML = '';
-
-  if (filteredPorts.length === 0) {
-    elements.emptyState.classList.remove('hidden');
-    return;
-  }
-  elements.emptyState.classList.add('hidden');
-
-  // Separate user and system ports
-  const userPorts = filteredPorts.filter(p => !p.isSystem);
-  const systemPorts = filteredPorts.filter(p => p.isSystem);
-
-  // Update simple status strip
-  const simpleSummaryText = document.getElementById('simple-summary-text');
-  if (simpleSummaryText) {
-    simpleSummaryText.textContent = `המחשב פועל בצורה תקינה. ישנן ${userPorts.length} אפליקציות משתמש פעילות כרגע.`;
-  }
-
-  // Helper to create card HTML
-  function resourceSummary(ports) {
-    const cpu = ports.reduce((sum, port) => sum + Number(port.cpu || 0), 0);
-    const memoryMb = ports.reduce((sum, port) => sum + Number(port.memoryMb || 0), 0);
-    return {
-      cpu: cpu.toFixed(1),
-      memoryMb: memoryMb.toFixed(1)
-    };
-  }
-
-  function createCardElement(portObj) {
-    const card = document.createElement('div');
-    card.className = 'port-card';
-    if (portObj.isSelf) {
-      card.classList.add('self-card');
-    }
-
-    const portNumber = Number(portObj.port);
-    const portText = (portObj.ports || [portObj.port]).join(', ');
-    const pidText = (portObj.pids || [portObj.pid]).join(', ');
-    const isSelf = portNumber === selfPort;
-    const isSystemProcess = portObj.isSystem === true;
-    const isReadOnlyMode = typeof window.SafetySettings !== 'undefined' && !window.SafetySettings.canKill();
-    const isAggregate = portObj.isAggregate === true;
-    const killDisabled = isAggregate || isSelf || isSystemProcess || isReadOnlyMode;
-
-    const processIcon = getProcessIcon(portObj.processName);
-    const appName = getFriendlyAppName(portObj);
-    const sourceInfo = getSourceInfo(portObj);
-    const listenerInfo = getListenerInfo(portObj);
-    const cpu = Number(portObj.cpu || 0).toFixed(1);
-    const memoryMb = Number(portObj.memoryMb || 0).toFixed(1);
-
-    // Format folder path for simple view
-    let folderDisplay = '';
-    if (sourceInfo.path && sourceInfo.path !== 'לא זמין' && sourceInfo.path !== '/') {
-      const parts = sourceInfo.path.split('/');
-      const filename = parts.pop();
-      const foldername = parts.pop() || '';
-      folderDisplay = foldername ? `📁 ${foldername}/${filename}` : `📁 ${filename}`;
-    }
-
-    // Determine security status
-    let safetyBadgeHtml = '';
-    if (listenerInfo.label === 'מקומי בלבד') {
-      safetyBadgeHtml = `<span class="port-card-safety-badge safe">🔒 רק במחשב שלי (מאובטח)</span>`;
-    } else {
-      safetyBadgeHtml = `<span class="port-card-safety-badge exposed">🌐 פתוח לרשת המקומית (ציבורי)</span>`;
-    }
-
-    // Check if HTTP to show "Open in Browser" button
-    const isHttpPort = [80, 443, 3000, 5000, 5173, 8000, 8080, 9000].includes(portNumber);
-    let openBrowserBtnHtml = '';
-    if (isHttpPort && !isSystemProcess) {
-      const protocol = portNumber === 443 ? 'https' : 'http';
-      openBrowserBtnHtml = `
-        <a href="${protocol}://localhost:${portNumber}" target="_blank" rel="noopener noreferrer" class="port-card-link-btn" title="פתח את האתר בדפנפדן">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-            <polyline points="15 3 21 3 21 9"></polyline>
-            <line x1="10" y1="14" x2="21" y2="3"></line>
-          </svg>
-          פתח בדפדפן
-        </a>
-      `;
-    }
-
-    // Port description (friendly name)
-    const portDesc = PORT_DESCRIPTIONS[portNumber] || (isSystemProcess ? 'שירות מערכת macOS' : 'תהליך ריצה');
-
-    // Action button
-    let actionBtnHtml = '';
-    if (isSelf) {
-      actionBtnHtml = `<span class="port-card-protected-label">🔌 מנהל הפורטים (פעיל)</span>`;
-    } else if (isSystemProcess) {
-      actionBtnHtml = `<span class="port-card-protected-label">🛡️ מוגן על ידי macOS</span>`;
-    } else {
-      actionBtnHtml = `
-        <button class="port-card-kill-btn" ${killDisabled ? 'disabled' : ''} title="${killDisabled ? 'סגירה חסומה' : 'עצור פעילות אפליקציה'}">
-          עצור אפליקציה
-        </button>
-      `;
-    }
-
-    card.innerHTML = `
-      <div class="port-card-header">
-        <span class="port-card-icon">${processIcon}</span>
-        <div class="port-card-info">
-          <strong class="port-card-title" dir="ltr">${escapeHtml(appName)}</strong>
-          <span class="port-card-desc">${escapeHtml(portDesc)}</span>
-          ${folderDisplay ? `<span class="port-card-directory" title="${escapeHtml(sourceInfo.path)}">${escapeHtml(folderDisplay)}</span>` : ''}
-        </div>
-      </div>
-      <div class="port-card-body">
-        <div class="port-card-ports-row">
-          <span class="port-card-badge ${isSystemProcess ? 'system' : ''} ${isSelf ? 'self' : ''}">פורט ${portText}</span>
-          ${openBrowserBtnHtml}
-        </div>
-        <div class="port-card-safety-row">
-          ${safetyBadgeHtml}
-        </div>
-        <div class="port-card-pid">מזהה תהליך (PID): ${pidText}</div>
-        <div class="port-card-resources-row" aria-label="צריכת משאבים">
-          <span class="port-card-resource-badge cpu">⚡ ${cpu}% CPU</span>
-          <span class="port-card-resource-badge memory">💾 ${memoryMb} MB RAM</span>
-        </div>
-      </div>
-      <div class="port-card-footer">
-        <button class="port-card-details-link btn-details-action">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-          פרטים טכניים
-        </button>
-        ${actionBtnHtml}
-      </div>
-    `;
-
-    // Bind event listeners
-    card.querySelector('.btn-details-action').addEventListener('click', () => {
-      openDetailsModal(portObj);
-    });
-
-    const killBtn = card.querySelector('.port-card-kill-btn');
-    if (killBtn && !killDisabled) {
-      killBtn.addEventListener('click', () => {
-        openConfirmModal('kill', portObj);
-      });
-    }
-
-    return card;
-  }
-
-  // Group user ports by category
-  const categories = {
-    dev: {
-      id: 'category-dev',
-      title: '💻 אתרים ושרתי פיתוח מקומיים',
-      ports: [],
-      defaultExpanded: true,
-      sessionKey: 'accordion_dev_expanded'
-    },
-    db: {
-      id: 'category-db',
-      title: '🐘 מסדי נתונים ושירותי רקע',
-      ports: [],
-      defaultExpanded: false,
-      sessionKey: 'accordion_db_expanded'
-    },
-    apps: {
-      id: 'category-apps',
-      title: '🌐 אפליקציות ודפדפנים',
-      ports: [],
-      defaultExpanded: false,
-      sessionKey: 'accordion_apps_expanded'
-    },
-    other: {
-      id: 'category-other',
-      title: '⚙️ שירותים אחרים',
-      ports: [],
-      defaultExpanded: false,
-      sessionKey: 'accordion_other_expanded'
-    }
-  };
-
-  userPorts.forEach(portObj => {
-    const name = (portObj.processName || '').toLowerCase();
-    const cmd = (portObj.commandLine || '').toLowerCase();
-    const portNumber = Number(portObj.port);
-    const desc = PORT_DESCRIPTIONS[portNumber] || '';
-
-    // 1. Check if DB
-    const isDb = name.includes('postgres') || name.includes('pg') || name.includes('mysql') || 
-                 name.includes('redis') || name.includes('mongo') || name.includes('elastic') || 
-                 name.includes('sql') || name.includes('docker') || name.includes('dockerd') ||
-                 [3306, 5432, 6379, 27017, 9200].includes(portNumber) ||
-                 desc.includes('נתונים') || desc.includes('Redis');
-                 
-    // 2. Check if App/Browser
-    const isApp = name.includes('chrome') || name.includes('chromium') || name.includes('firefox') || 
-                  name.includes('safari') || name.includes('browser') || name.includes('slack') || 
-                  name.includes('spotify') || name.includes('electron') || name.includes('discord') ||
-                  cmd.includes('.app/contents/macos/');
-
-    // 3. Check if Dev Server
-    const isDev = name.includes('node') || name.includes('npm') || name.includes('python') || 
-                  name.includes('vite') || name.includes('ruby') || name.includes('go') || 
-                  name.includes('gopls') || name.includes('port-manager') || name.includes('server.js') ||
-                  [80, 443, 3000, 5000, 5173, 7000, 8000, 8080, 9000].includes(portNumber) ||
-                  desc.includes('פיתוח') || desc.includes('שרת');
-
-    if (isDb) {
-      categories.db.ports.push(portObj);
-    } else if (isApp) {
-      categories.apps.ports.push(portObj);
-    } else if (isDev) {
-      categories.dev.ports.push(portObj);
-    } else {
-      categories.other.ports.push(portObj);
-    }
-  });
-
-  // Render cards based on active filter
-  if (activeFilter === 'user') {
-    renderUserCategories();
-  } else if (activeFilter === 'system') {
-    renderSystemCategory();
-  } else {
-    // 'all' filter: show user ports grouped, then system ports
-    renderUserCategories();
-    renderSystemCategory();
-  }
-
-  function renderUserCategories() {
-    Object.values(categories).forEach(cat => {
-      if (cat.ports.length === 0) return;
-
-      const accordion = document.createElement('div');
-      accordion.className = 'system-processes-accordion glass';
-      accordion.style.marginBottom = '1rem';
-      
-      const sessionVal = sessionStorage.getItem(cat.sessionKey);
-      const isExpanded = sessionVal !== null ? (sessionVal === 'true') : cat.defaultExpanded;
-      const metrics = resourceSummary(cat.ports);
-
-      accordion.innerHTML = `
-        <div class="accordion-header" id="${cat.id}-toggle" role="button" aria-expanded="${isExpanded}" tabindex="0">
-          <span>${cat.title} (${cat.ports.length} פעילים)</span>
-          <span class="accordion-header-metrics" aria-label="סיכום צריכת משאבים">
-            <span class="header-metric-badge cpu">⚡ ${metrics.cpu}%</span>
-            <span class="header-metric-badge memory">💾 ${metrics.memoryMb} MB</span>
-          </span>
-          <svg class="accordion-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
-        <div class="accordion-content ${isExpanded ? '' : 'hidden'}" id="${cat.id}-content">
-          <div class="cards-grid" id="${cat.id}-grid">
-            <!-- Cards go here -->
-          </div>
-        </div>
-      `;
-
-      cardsContainer.appendChild(accordion);
-
-      const grid = accordion.querySelector(`#${cat.id}-grid`);
-      cat.ports.forEach(port => {
-        grid.appendChild(createCardElement(port));
-      });
-
-      const toggleBtn = accordion.querySelector(`#${cat.id}-toggle`);
-      const content = accordion.querySelector(`#${cat.id}-content`);
-      const arrow = accordion.querySelector('.accordion-arrow');
-
-      toggleBtn.addEventListener('click', () => {
-        const currentlyHidden = content.classList.contains('hidden');
-        content.classList.toggle('hidden', !currentlyHidden);
-        toggleBtn.setAttribute('aria-expanded', currentlyHidden);
-        arrow.style.transform = currentlyHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-        sessionStorage.setItem(cat.sessionKey, currentlyHidden);
-      });
-
-      toggleBtn.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleBtn.click();
-        }
-      });
-    });
-  }
-
-  function renderSystemCategory() {
-    if (systemPorts.length === 0) return;
-
-    const accordion = document.createElement('div');
-    accordion.className = 'system-processes-accordion glass';
-    accordion.style.marginBottom = '1rem';
-    
-    // Default expanded only if activeFilter is exactly 'system'
-    const defaultExp = activeFilter === 'system';
-    const sessionKey = 'accordion_system_expanded';
-    const sessionVal = sessionStorage.getItem(sessionKey);
-    const isExpanded = sessionVal !== null ? (sessionVal === 'true') : defaultExp;
-    const metrics = resourceSummary(systemPorts);
-
-    accordion.innerHTML = `
-      <div class="accordion-header" id="system-accordion-toggle" role="button" aria-expanded="${isExpanded}" tabindex="0">
-        <span>⚙️ תהליכי מערכת של macOS (עוד ${systemPorts.length} תהליכים מוגנים)</span>
-        <span class="accordion-header-metrics" aria-label="סיכום צריכת משאבים">
-          <span class="header-metric-badge cpu">⚡ ${metrics.cpu}%</span>
-          <span class="header-metric-badge memory">💾 ${metrics.memoryMb} MB</span>
-        </span>
-        <svg class="accordion-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-      </div>
-      <div class="accordion-content ${isExpanded ? '' : 'hidden'}" id="system-accordion-content">
-        <div class="cards-grid" id="system-accordion-grid">
-          <!-- System cards go here -->
-        </div>
-      </div>
-    `;
-
-    cardsContainer.appendChild(accordion);
-
-    const systemGrid = accordion.querySelector('#system-accordion-grid');
-    systemPorts.forEach(port => {
-      systemGrid.appendChild(createCardElement(port));
-    });
-
-    const toggleBtn = accordion.querySelector('#system-accordion-toggle');
-    const content = accordion.querySelector('#system-accordion-content');
-    const arrow = accordion.querySelector('.accordion-arrow');
-
-    toggleBtn.addEventListener('click', () => {
-      const currentlyHidden = content.classList.contains('hidden');
-      content.classList.toggle('hidden', !currentlyHidden);
-      toggleBtn.setAttribute('aria-expanded', currentlyHidden);
-      arrow.style.transform = currentlyHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-      sessionStorage.setItem(sessionKey, currentlyHidden);
-    });
-
-    toggleBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        toggleBtn.click();
-      }
-    });
-  }
 }

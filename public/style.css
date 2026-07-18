@@ -2838,6 +2838,260 @@ body.view-detailed .simple-summary-strip {
   display: none;
 }
 
+/* Compact grouped port list — simple view only */
+body.view-simple .cards-grid {
+  display: block;
+  padding: 0;
+}
+
+body.view-simple .simple-port-section {
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(16, 22, 34, 0.28);
+}
+
+body.view-simple .simple-port-section + .simple-port-section {
+  margin-top: 24px;
+}
+
+body.view-simple .simple-port-section-toggle {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 0;
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+body.view-simple .simple-port-section-toggle:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+body.view-simple .simple-port-section-toggle:focus-visible,
+body.view-simple .simple-port-row-actions > *:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+body.view-simple .simple-port-section-summary {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+body.view-simple .simple-port-section-title {
+  color: var(--text-primary);
+  font-weight: 720;
+}
+
+body.view-simple .simple-port-section-count,
+body.view-simple .simple-port-section-metrics {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+body.view-simple .simple-port-section-chevron {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+body.view-simple .simple-port-section-toggle[aria-expanded="true"] .simple-port-section-chevron {
+  transform: rotate(180deg);
+}
+
+body.view-simple .simple-port-section-content {
+  border-top: 1px solid var(--border-color);
+}
+
+body.view-simple .simple-port-list {
+  display: block;
+}
+
+body.view-simple .simple-port-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 16px;
+}
+
+body.view-simple .simple-port-row + .simple-port-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+body.view-simple .simple-port-row-primary,
+body.view-simple .simple-port-row-meta,
+body.view-simple .simple-port-row-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+body.view-simple .simple-port-row-primary {
+  gap: 12px;
+}
+
+body.view-simple .simple-port-row-icon {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 1.15rem;
+}
+
+body.view-simple .simple-port-row-identity {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+body.view-simple .simple-port-row-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.view-simple .simple-port-row-description,
+body.view-simple .simple-port-meta-item {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.view-simple .simple-port-port {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+
+body.view-simple .simple-port-row-meta {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+body.view-simple .simple-port-safety,
+body.view-simple .simple-port-protected {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+body.view-simple .simple-port-safety.safe {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+body.view-simple .simple-port-safety.exposed {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+body.view-simple .simple-port-protected {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+body.view-simple .simple-port-row-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+body.view-simple .simple-port-row-actions > * { min-height: 44px; }
+
+body.view-simple .simple-port-browser-link,
+body.view-simple .simple-port-details-btn,
+body.view-simple .simple-port-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+body.view-simple .simple-port-browser-link:hover,
+body.view-simple .simple-port-details-btn:hover {
+  border-color: rgba(42, 168, 137, 0.45);
+  color: var(--text-primary);
+}
+
+body.view-simple .simple-port-stop-btn:not(:disabled):hover {
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fff;
+}
+
+body.view-simple .simple-port-stop-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+body.view-simple .simple-port-row.is-self .simple-port-port {
+  border-color: rgba(42, 168, 137, 0.42);
+  color: var(--color-success);
+}
+
+body.view-simple .simple-port-row.is-system .simple-port-row-icon {
+  color: var(--color-info);
+}
+
+@media (max-width: 760px) {
+  body.view-simple .simple-port-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.view-simple .simple-port-row-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.view-simple .simple-port-section-chevron {
+    transition: none;
+  }
+}
+
 #quick-clean-cache-btn {
   min-height: 44px;
 }
@@ -3470,5 +3724,4 @@ body.view-detailed .simple-summary-strip {
 .tooltip:hover::after {
   opacity: 1;
 }
-
 

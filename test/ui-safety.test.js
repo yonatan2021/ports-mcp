@@ -250,3 +250,29 @@ test('safe cleanup wizard reviews only backend-safe cache items', () => {
   assert.match(appJs, /getSafeCacheItems\(cacheItemsData\)/);
   assert.match(appJs, /הפריטים יועברו לפח האשפה/);
 });
+
+test('simple port view uses an accessible compact grouped-list contract', () => {
+  assert.match(appJs, /className = 'simple-port-section'/);
+  assert.match(appJs, /class="simple-port-section-toggle"/);
+  assert.match(appJs, /aria-controls="\$\{category\.id\}-content"/);
+  assert.match(appJs, /class="simple-port-list"/);
+  assert.match(appJs, /row\.className = `simple-port-row/);
+  assert.match(appJs, /class="simple-port-row-meta"/);
+  assert.match(appJs, /class="simple-port-row-actions"/);
+  assert.match(appJs, /openDetailsModal\(portObj\)/);
+  assert.match(appJs, /openConfirmModal\('kill', portObj\)/);
+  assert.match(appJs, /const killDisabled = isAggregate \|\| isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
+  assert.match(appJs, /מנהל הפורטים \(פעיל\)/);
+  assert.match(appJs, /מוגן על ידי macOS/);
+  assert.match(appJs, /target="_blank" rel="noopener noreferrer"/);
+});
+
+test('compact grouped-list styles keep rows scannable and responsive', () => {
+  assert.match(styleCss, /body\.view-simple \.simple-port-section \{/);
+  assert.match(styleCss, /body\.view-simple \.simple-port-list/);
+  assert.match(styleCss, /body\.view-simple \.simple-port-row \+ \.simple-port-row/);
+  assert.match(styleCss, /grid-template-columns: minmax\(0, 1\.35fr\) minmax\(0, 1fr\) auto/);
+  assert.match(styleCss, /\.simple-port-section-toggle:focus-visible/);
+  assert.match(styleCss, /\.simple-port-row-actions > \* \{ min-height: 44px;/);
+  assert.match(styleCss, /@media \(max-width: 760px\)/);
+});
