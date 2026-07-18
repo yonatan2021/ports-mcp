@@ -340,7 +340,9 @@ class SafetyLayer {
       /\/\.bun\/install\/cache$/,
       /\/\.next\/cache$/,
       /\/node_modules\/\.cache$/,
-      /\/\.vite$/
+      /\/\.vite$/,
+      /\/\.gradle\/caches(\/.+)?$/,
+      /\/\.cargo\/(registry|git)(\/.+)?$/
     ];
 
     const isMatch = allowedPatterns.some(pattern => pattern.test(normalized));

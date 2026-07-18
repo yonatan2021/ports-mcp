@@ -162,6 +162,26 @@ function createPortService(options = {}) {
       this.data.clear();
     }
   };
+  
+  const portsCache = {
+    data: null,
+    timestamp: 0,
+    ttl: options.portsCacheTtl ?? 2000,
+    get() {
+      if (this.data && Date.now() - this.timestamp < this.ttl) {
+        return this.data;
+      }
+      return null;
+    },
+    set(ports) {
+      this.data = ports;
+      this.timestamp = Date.now();
+    },
+    clear() {
+      this.data = null;
+      this.timestamp = 0;
+    }
+  };
 
   async function getSizesForPaths(paths) {
     const normPaths = paths.map(p => path.normalize(p));
@@ -218,7 +238,15 @@ function createPortService(options = {}) {
     }
   }
 
-  async function listPorts() {
+  async function listPorts({ bypassCache = false } = {}) {
+    if (bypassCache) {
+      portsCache.clear();
+    }
+    const cached = portsCache.get();
+    if (cached !== null) {
+      return cached;
+    }
+
     let ports;
     if (options.listPorts) {
       ports = await options.listPorts();
@@ -241,12 +269,29 @@ function createPortService(options = {}) {
       }
     }
 
+    let metricsMap = new Map();
+    try {
+      const systemProcesses = await getSystemProcesses();
+      for (const proc of systemProcesses) {
+        metricsMap.set(proc.pid, { cpu: proc.cpu, memoryMb: proc.memoryMb });
+      }
+    } catch (err) {
+      // Ignore metrics fetch errors to keep listPorts robust
+    }
+
     let results = ports.map(p => {
       const enriched = { ...p, commandLine: p.commandLine || 'Unknown command' };
-      return { ...enriched, isSystem: p.isSystem !== undefined ? p.isSystem : isSystemProcess(enriched) };
+      const metrics = metricsMap.get(p.pid) || { cpu: 0, memoryMb: 0 };
+      return {
+        ...enriched,
+        cpu: metrics.cpu,
+        memoryMb: metrics.memoryMb,
+        isSystem: p.isSystem !== undefined ? p.isSystem : isSystemProcess(enriched)
+      };
     }).sort((a, b) => a.port - b.port || a.pid - b.pid);
 
     if (results.length > MAX_PORTS_RETURNED) results.length = MAX_PORTS_RETURNED;
+    portsCache.set(results);
     return results;
   }
 
@@ -356,6 +401,7 @@ function createPortService(options = {}) {
     }
 
     killFn(normalizedPid, 'SIGTERM');
+    portsCache.clear();
     const result = { dryRun: false, signalSent: 'SIGTERM', target: portInfo };
     auditLog({ action: 'kill', signal: 'SIGTERM', pid: normalizedPid, port: normalizedPort, processName: portInfo.processName, user: portInfo.user });
     if (force === true) {
@@ -548,6 +594,7 @@ function createPortService(options = {}) {
     }
 
     killFn(normalizedPid, 'SIGSTOP');
+    portsCache.clear();
     auditLog({ action: 'suspend', pid: normalizedPid, processName: target.processName, user: target.user });
     return { ok: true, pid: normalizedPid, processName: target.processName };
   }
@@ -565,6 +612,7 @@ function createPortService(options = {}) {
     }
 
     killFn(normalizedPid, 'SIGCONT');
+    portsCache.clear();
     auditLog({ action: 'resume', pid: normalizedPid, processName: target.processName, user: target.user });
     return { ok: true, pid: normalizedPid, processName: target.processName };
   }
@@ -590,6 +638,7 @@ function createPortService(options = {}) {
     }
 
     killFn(normalizedPid, 'SIGTERM');
+    portsCache.clear();
     auditLog({ action: 'kill-system-process', pid: normalizedPid, processName: target.processName, user: target.user });
     return { dryRun: false, signalSent: 'SIGTERM', target };
   }
@@ -602,7 +651,11 @@ function createPortService(options = {}) {
       { name: 'pnpm Cache', path: path.join(cacheDir, 'pnpm'), description: 'pnpm package manager download cache', category: 'SAFE_TO_CLEAR' },
       { name: 'Bun Cache', path: path.join(homeDir, '.bun', 'install', 'cache'), description: 'Bun package installation cache', category: 'SAFE_TO_CLEAR' },
       { name: 'Next.js Cache (.next/cache)', path: path.join(cwd, '.next', 'cache'), description: 'Local Next.js project build cache', category: 'SAFE_TO_CLEAR' },
-      { name: 'Vite Cache', path: path.join(cwd, 'node_modules', '.cache'), description: 'Local Vite dependency pre-bundle cache', category: 'SAFE_TO_CLEAR' }
+      { name: 'Vite Cache', path: path.join(cwd, 'node_modules', '.cache'), description: 'Local Vite dependency pre-bundle cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Gradle Cache', path: path.join(homeDir, '.gradle', 'caches'), description: 'Gradle dependency and build cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Cargo Registry Cache', path: path.join(homeDir, '.cargo', 'registry'), description: 'Cargo package manager download registry cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'Cargo Git Cache', path: path.join(homeDir, '.cargo', 'git'), description: 'Cargo package manager Git dependency cache', category: 'SAFE_TO_CLEAR' },
+      { name: 'CocoaPods Cache', path: path.join(cacheDir, 'CocoaPods'), description: 'CocoaPods dependency download cache', category: 'SAFE_TO_CLEAR' }
     ];
 
     let items = [];
@@ -621,7 +674,7 @@ function createPortService(options = {}) {
     try {
       const entries = await fs.readdir(cacheDir, { withFileTypes: true });
       const systemCaches = entries
-        .filter(entry => entry.isDirectory() && !['Yarn', 'pnpm'].includes(entry.name))
+        .filter(entry => entry.isDirectory() && !['Yarn', 'pnpm', 'CocoaPods'].includes(entry.name))
         .map(entry => ({
           name: entry.name,
           path: path.join(cacheDir, entry.name),

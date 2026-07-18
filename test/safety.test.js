@@ -599,6 +599,10 @@ test('SafetyLayer.checkCachePath blocks paths outside home or containing invalid
     // Should pass:
     assert.ok(safety.checkCachePath('/Users/testuser/.npm'));
     assert.ok(safety.checkCachePath('/Users/testuser/Library/Caches/foo'));
+    assert.ok(safety.checkCachePath('/Users/testuser/.gradle/caches'));
+    assert.ok(safety.checkCachePath('/Users/testuser/.gradle/caches/transforms-3'));
+    assert.ok(safety.checkCachePath('/Users/testuser/.cargo/registry'));
+    assert.ok(safety.checkCachePath('/Users/testuser/.cargo/git'));
     
     // Should fail:
     assert.throws(() => safety.checkCachePath('/System/Library/Caches'), /SafetyError/);

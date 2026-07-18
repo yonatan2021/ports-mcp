@@ -45,17 +45,221 @@ const PORT_DESCRIPTIONS = {
   27017: 'בסיס נתונים MongoDB'
 };
 
+// Dictionary of common process names and their Hebrew descriptions / friendly names
+const PROCESS_TRANSLATIONS = {
+  'node': 'סביבת ריצה Node.js (שרת פיתוח)',
+  'python': 'פייתון (שרת פיתוח / כלי מערכת)',
+  'python3': 'פייתון (שרת פיתוח / כלי מערכת)',
+  'postgres': 'מסד נתונים PostgreSQL',
+  'postmaster': 'מסד נתונים PostgreSQL',
+  'mongod': 'מסד נתונים MongoDB',
+  'redis-server': 'מסד נתונים בזיכרון Redis',
+  'mysql': 'מסד נתונים MySQL',
+  'mysqld': 'מסד נתונים MySQL',
+  'nginx': 'שרת אינטרנט Nginx',
+  'httpd': 'שרת אינטרנט Apache',
+  'apache': 'שרת אינטרנט Apache',
+  'git': 'מערכת ניהול גרסאות Git',
+  'ruby': 'שפת רובי (שרת פיתוח)',
+  'go': 'יישום Go',
+  'java': 'יישום Java / שרת פיתוח',
+  'docker': 'סביבת Docker (מכולות)',
+  'dockerd': 'סביבת Docker (מכולות)',
+  'com.docker.backend': 'מנגנון הליבה של Docker',
+  'chrome': 'דפדפן Google Chrome',
+  'google chrome': 'דפדפן Google Chrome',
+  'safari': 'דפדפן Safari',
+  'firefox': 'דפדפן Firefox',
+  'vscode': 'עורך הקוד VS Code',
+  'code': 'עורך הקוד VS Code',
+  'cursor': 'עורך הקוד Cursor',
+  'slack': 'אפליקציית Slack',
+  'spotify': 'נגן המוזיקה Spotify',
+  'electron': 'אפליקציית Electron',
+  'mdnsresponder': 'שירות Bonjour (גילוי התקנים ברשת)',
+  'dsaccess': 'ניהול הרשאות ספריה',
+  'configd': 'תצורת רשת macOS',
+  'syslogd': 'שירות רישום יומני מערכת',
+  'launchd': 'מנהל השירותים הראשי של macOS (launchd)',
+  'identityservicesd': 'שירותי זיהוי של Apple (iMessage/FaceTime)',
+  'airportd': 'ניהול רשתות אלחוטיות (Wi-Fi)',
+  'sharingd': 'שירות שיתוף קבצים ו-AirDrop',
+  'bluetoothd': 'שירות בלוטות\' (Bluetooth)',
+  'locationd': 'שירותי מיקום של macOS',
+  'cfprefsd': 'ניהול העדפות יישומים (Preferences)',
+  'distnoted': 'הפצת התראות בין תהליכים',
+  'tccd': 'בקרת פרטיות ואבטחה (מצלמה/מיקרופון)',
+  'softwareupdated': 'שירות עדכוני תוכנה של macOS',
+  'cloudd': 'שירות סנכרון iCloud',
+  'timed': 'סנכרון שעון המערכת',
+  'powerd': 'ניהול צריכת חשמל ושינה',
+  'windowserver': 'מנהל התצוגה והחלונות של macOS',
+  'hidd': 'שירות התקני קלט (מקלדת ועכבר)',
+  'coreaudiod': 'מנגנון השמע של macOS',
+  'cupsd': 'ניהול מדפסות (CUPS)'
+};
+
 function getFriendlyAppName(portObj) {
   const command = portObj.commandLine || '';
   const appMatch = command.match(/\/([^/]+)\.app\/Contents\/MacOS\//);
   if (appMatch) return appMatch[1];
 
   const scriptMatch = command.match(/(?:^|\s)(?:node|python3?|ruby)\s+(\S+)/);
-  if (scriptMatch && !scriptMatch[1].startsWith('-')) return scriptMatch[1].split('/').pop();
+  let baseName = '';
+  if (scriptMatch && !scriptMatch[1].startsWith('-')) {
+    baseName = scriptMatch[1].split('/').pop();
+  }
+
+  const pName = (portObj.processName || '').toLowerCase();
+  if (PROCESS_TRANSLATIONS[pName]) {
+    return PROCESS_TRANSLATIONS[pName];
+  }
+
+  if (baseName) {
+    const baseLower = baseName.toLowerCase();
+    if (PROCESS_TRANSLATIONS[baseLower]) {
+      return PROCESS_TRANSLATIONS[baseLower];
+    }
+    return baseName;
+  }
 
   if (/^language[_-]/i.test(portObj.processName || '')) return 'שירות שפה של סביבת פיתוח';
 
   return portObj.processName || 'תהליך לא מזוהה';
+}
+
+function matchSmartQuery(item, query, isPortObj = true) {
+  if (!query) return true;
+  query = query.toLowerCase().trim();
+
+  // Basic direct text match fields
+  const pidStr = String(item.pid || '');
+  const name = (item.processName || '').toLowerCase();
+  const cmd = (item.commandLine || '').toLowerCase();
+  const user = (item.user || '').toLowerCase();
+  
+  let directMatch = pidStr.includes(query) ||
+                    name.includes(query) ||
+                    cmd.includes(query) ||
+                    user.includes(query);
+
+  if (isPortObj) {
+    const portStr = String(item.port || '');
+    const source = getSourceInfo(item).path.toLowerCase();
+    const listener = getListenerInfo(item).label.toLowerCase();
+    const appFriendlyName = getFriendlyAppName(item).toLowerCase();
+    const portDesc = (PORT_DESCRIPTIONS[item.port] || '').toLowerCase();
+
+    directMatch = directMatch ||
+                  portStr.includes(query) ||
+                  source.includes(query) ||
+                  listener.includes(query) ||
+                  appFriendlyName.includes(query) ||
+                  portDesc.includes(query);
+  }
+
+  if (directMatch) return true;
+
+  // Synonym maps in Hebrew
+  const synonyms = {
+    'דפדפן': ['chrome', 'google chrome', 'safari', 'firefox', 'browser', 'internet', 'אינטרנט'],
+    'אינטרנט': ['chrome', 'google chrome', 'safari', 'firefox', 'browser', 'http', 'https', '80', '443'],
+    'פיתוח': ['node', 'npm', 'python', 'vite', 'ruby', 'go', '3000', '5173', '8000', '8080', '9000', 'local', 'localhost'],
+    'שרת': ['node', 'npm', 'python', 'vite', 'ruby', 'go', '3000', '5173', '8000', '8080', '9000', 'http', 'https'],
+    'בסיס נתונים': ['postgres', 'pg', 'mysql', 'redis', 'mongo', 'sql', 'db', 'postmaster', 'mysqld', 'mongod'],
+    'מסד נתונים': ['postgres', 'pg', 'mysql', 'redis', 'mongo', 'sql', 'db', 'postmaster', 'mysqld', 'mongod'],
+    'דאטהבייס': ['postgres', 'pg', 'mysql', 'redis', 'mongo', 'sql', 'db', 'postmaster', 'mysqld', 'mongod'],
+    'מערכת': ['system', 'macos', 'launchd', 'windowserver', 'mdnsresponder', 'cfprefsd', 'tccd', 'cloudd', 'locationd', 'sharingd'],
+    'מוגן': ['system', 'macos', 'launchd', 'windowserver', 'mdnsresponder', 'cfprefsd', 'tccd', 'cloudd', 'locationd', 'sharingd', 'self', '9999']
+  };
+
+  for (const [key, list] of Object.entries(synonyms)) {
+    if (key.includes(query) || query.includes(key)) {
+      for (const keyword of list) {
+        if (name.includes(keyword) || cmd.includes(keyword) || (isPortObj && String(item.port).includes(keyword))) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function assessProcessRisk(portObj) {
+  const portNumber = Number(portObj.port);
+  const processName = (portObj.processName || '').toLowerCase();
+  const isSystemProcess = portObj.isSystem === true;
+  const isSelf = portNumber === selfPort;
+
+  // 1. High Risk
+  if (isSelf) {
+    return {
+      level: 'high',
+      badgeClass: 'badge-high',
+      label: 'סיכון גבוה (הגנה עצמית)',
+      explanation: 'זהו שרת מנהל הפורטים עצמו. סגירתו תפסיק את פעולת הממשק ותנתק את החיבור הנוכחי.'
+    };
+  }
+
+  if (isSystemProcess) {
+    return {
+      level: 'high',
+      badgeClass: 'badge-high',
+      label: 'סיכון גבוה (תהליך מערכת)',
+      explanation: 'תהליך מערכת חיוני של macOS. סגירתו עלולה לגרום לקריסת שירותים, חוסר יציבות זמני או הפעלה מחדש של המחשב.'
+    };
+  }
+
+  const isDb = processName.includes('postgres') || processName.includes('pg') || processName.includes('mysql') || 
+               processName.includes('redis') || processName.includes('mongo') || processName.includes('elastic') || 
+               processName.includes('sql') || processName.includes('docker') || processName.includes('dockerd') ||
+               [3306, 5432, 6379, 27017, 9200].includes(portNumber);
+
+  if (isDb) {
+    return {
+      level: 'high',
+      badgeClass: 'badge-high',
+      label: 'סיכון גבוה (מסד נתונים)',
+      explanation: 'מסד נתונים או שירות אחסון מידע פעיל. סגירה פתאומית עלולה לגרום לאובדן מידע שלא נשמר או לפגוע בקבצי המערכת של מסד הנתונים.'
+    };
+  }
+
+  // 2. Medium Risk
+  const isApp = processName.includes('chrome') || processName.includes('firefox') || processName.includes('safari') || 
+                processName.includes('browser') || processName.includes('slack') || processName.includes('spotify') || 
+                processName.includes('electron') || processName.includes('discord');
+
+  if (isApp) {
+    return {
+      level: 'medium',
+      badgeClass: 'badge-medium',
+      label: 'סיכון בינוני (תוכנת משתמש)',
+      explanation: 'תוכנת משתמש פעילה. סגירת התהליך תגרום לסגירה מיידית של האפליקציה (למשל הדפדפן או סלאק). ודאו שכל העבודה שלכם שמורה.'
+    };
+  }
+
+  // 3. Low Risk
+  const isDev = [80, 443, 3000, 5000, 5173, 8000, 8080, 9000].includes(portNumber) ||
+                processName.includes('node') || processName.includes('npm') || processName.includes('python') || 
+                processName.includes('vite') || processName.includes('ruby') || processName.includes('go');
+
+  if (isDev) {
+    return {
+      level: 'low',
+      badgeClass: 'badge-low',
+      label: 'סיכון נמוך (שרת פיתוח)',
+      explanation: 'שרת פיתוח מקומי או אפליקציה אישית. סגירתו בטוחה לחלוטין ולא תשפיע על פעילות המערכת.'
+    };
+  }
+
+  // Default fallback
+  return {
+    level: 'medium',
+    badgeClass: 'badge-medium',
+    label: 'סיכון בינוני',
+    explanation: 'תהליך ריצה כללי. מומלץ לוודא שאינכם זקוקים לשירות זה לפני סגירתו.'
+  };
 }
 
 function getSourceInfo(portObj) {
@@ -172,6 +376,8 @@ const elements = {
   specSource: document.getElementById('spec-source'),
   specProtocol: document.getElementById('spec-protocol'),
   specType: document.getElementById('spec-type'),
+  specCpu: document.getElementById('spec-cpu'),
+  specMemory: document.getElementById('spec-memory'),
   specCommand: document.getElementById('spec-command'),
 
   // Sidebar Tabs & Views
@@ -185,7 +391,15 @@ const elements = {
   cacheSizeFilter: document.getElementById('cache-size-filter'),
   cacheFilterTabs: document.querySelectorAll('.cache-filter-tab'),
   cacheResultsCount: document.getElementById('cache-results-count'),
-  cacheEmptyState: document.getElementById('cache-empty-state')
+  cacheEmptyState: document.getElementById('cache-empty-state'),
+
+  // Recent Actions Panel
+  recentActionsPanel: document.getElementById('recent-actions-panel'),
+  recentActionsToggle: document.getElementById('recent-actions-toggle'),
+  recentActionsContent: document.getElementById('recent-actions-content'),
+  recentActionsList: document.getElementById('recent-actions-list'),
+  recentActionsBadge: document.getElementById('recent-actions-badge'),
+  clearActionsBtn: document.getElementById('clear-actions-btn')
 };
 
 // --- INITIALIZATION ---
@@ -194,6 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchAppInfo();
   updateSystemUsage();
   startSystemUsagePolling();
+  setupRecentActions();
 
   const savedTab = localStorage.getItem('activeTab') || 'ports';
   switchTab(savedTab);
@@ -230,7 +445,7 @@ async function fetchAppInfo() {
     const response = await fetch('/api/app-info');
     if (!response.ok) throw new Error('App info unavailable');
     const info = await response.json();
-    elements.currentVersion.textContent = info.currentVersion || '—';
+    elements.currentVersion.textContent = info.currentVersion || '-';
     appUpdateReleaseUrl = typeof info.releaseUrl === 'string' ? info.releaseUrl : null;
     appUpdateSupported = info.updateSupported === true && typeof window.portManager?.applyUpdate === 'function';
 
@@ -262,16 +477,126 @@ async function applyAppUpdate() {
     const body = await window.portManager.applyUpdate();
     if (!body?.ok || !body?.handedOff) throw new Error('Update handoff failed');
 
-    elements.updateStatus.textContent = 'העדכון אומת — מפעיל מחדש…';
+    elements.updateStatus.textContent = 'העדכון אומת, מפעיל מחדש...';
     elements.updateButton.classList.add('hidden');
   } catch (error) {
     console.error('Could not apply app update:', error);
-    elements.updateStatus.textContent = 'העדכון נכשל — אפשר לנסות שוב';
+    elements.updateStatus.textContent = 'העדכון נכשל, ניתן לנסות שוב';
     elements.updateStatus.classList.add('available');
     elements.updateButton.disabled = false;
     elements.updateButton.textContent = 'נסה שוב';
     showToast(`העדכון נכשל: ${error.message}`, 'error');
   }
+}
+
+// --- RECENT ACTIONS LOG ---
+const RECENT_ACTIONS_KEY = 'ports-mcp-recent-actions';
+
+function getRecentActions() {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_ACTIONS_KEY)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function logRecentAction(type, target, details) {
+  const actions = getRecentActions();
+  const newAction = {
+    type,
+    target,
+    details,
+    timestamp: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  };
+  actions.unshift(newAction);
+  if (actions.length > 8) {
+    actions.pop();
+  }
+  localStorage.setItem(RECENT_ACTIONS_KEY, JSON.stringify(actions));
+  renderRecentActions();
+}
+
+function renderRecentActions() {
+  if (!elements.recentActionsList) return;
+  const actions = getRecentActions();
+
+  if (actions.length === 0) {
+    if (elements.recentActionsPanel) elements.recentActionsPanel.classList.add('hidden');
+    return;
+  }
+
+  if (elements.recentActionsPanel) elements.recentActionsPanel.classList.remove('hidden');
+  elements.recentActionsList.innerHTML = '';
+  
+  if (elements.recentActionsBadge) {
+    elements.recentActionsBadge.textContent = actions.length;
+    elements.recentActionsBadge.classList.remove('hidden');
+  }
+
+  actions.forEach(action => {
+    const li = document.createElement('li');
+    li.className = 'action-history-item';
+
+    let icon = '⚡';
+    let typeName = '';
+    if (action.type === 'kill') {
+      icon = '🛑';
+      typeName = 'סגירת תהליך';
+    } else if (action.type === 'pause') {
+      icon = '⏸️';
+      typeName = 'השהיית תהליך';
+    } else if (action.type === 'resume') {
+      icon = '▶️';
+      typeName = 'המשך תהליך';
+    } else if (action.type === 'clean-cache') {
+      icon = '🧹';
+      typeName = 'ניקוי מהיר של Cache';
+    } else if (action.type === 'trash-cache') {
+      icon = '🗑️';
+      typeName = 'מחיקת Cache';
+    }
+
+    li.innerHTML = `
+      <div class="action-history-left">
+        <span class="action-history-icon">${icon}</span>
+        <span class="action-history-text">${typeName}: <b>${escapeHtml(action.target)}</b></span>
+        <span style="font-size: var(--font-size-xs); color: var(--text-secondary);">${escapeHtml(action.details)}</span>
+      </div>
+      <div class="action-history-right">
+        <span class="action-history-badge success">בוצע בהצלחה</span>
+        <span class="action-history-time">${action.timestamp}</span>
+      </div>
+    `;
+    elements.recentActionsList.appendChild(li);
+  });
+}
+
+function setupRecentActions() {
+  if (!elements.recentActionsToggle || !elements.recentActionsContent) return;
+
+  elements.recentActionsToggle.addEventListener('click', (e) => {
+    // Avoid toggling when clicking the "Clear" button
+    if (e.target && e.target.id === 'clear-actions-btn') return;
+
+    const isExpanded = elements.recentActionsToggle.getAttribute('aria-expanded') === 'true';
+    elements.recentActionsToggle.setAttribute('aria-expanded', !isExpanded);
+    elements.recentActionsContent.classList.toggle('hidden', isExpanded);
+    
+    const arrow = elements.recentActionsToggle.querySelector('.accordion-arrow');
+    if (arrow) {
+      arrow.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+    }
+  });
+
+  if (elements.clearActionsBtn) {
+    elements.clearActionsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      localStorage.removeItem(RECENT_ACTIONS_KEY);
+      renderRecentActions();
+    });
+  }
+
+  renderRecentActions();
 }
 
 function setupEventListeners() {
@@ -384,8 +709,22 @@ function setupEventListeners() {
   };
   elements.modalCancelBtn.addEventListener('click', closeConfirmModal);
   elements.modalCloseBtn.addEventListener('click', closeConfirmModal);
-  elements.confirmPidInput.addEventListener('input', validateDestructiveConfirmation);
-  elements.confirmUnderstandCheckbox.addEventListener('change', validateDestructiveConfirmation);
+  elements.confirmPidInput.addEventListener('input', () => validateDestructiveConfirmation());
+  elements.confirmUnderstandCheckbox.addEventListener('change', () => validateDestructiveConfirmation());
+  if (elements.confirmRequiredPid) {
+    elements.confirmRequiredPid.addEventListener('click', () => {
+      const pidVal = elements.confirmRequiredPid.textContent;
+      if (pidVal && pidVal !== '-' && pidVal !== '--') {
+        elements.confirmPidInput.value = pidVal;
+        elements.confirmUnderstandCheckbox.checked = true;
+        validateDestructiveConfirmation();
+        elements.confirmRequiredPid.classList.add('active-feed');
+        setTimeout(() => {
+          elements.confirmRequiredPid.classList.remove('active-feed');
+        }, 150);
+      }
+    });
+  }
   elements.confirmModal.addEventListener('click', (e) => {
     if (e.target === elements.confirmModal) closeConfirmModal();
   });
@@ -465,6 +804,52 @@ function setupEventListeners() {
       }
     });
   }
+
+  // Search Chips event listeners
+  const chips = document.querySelectorAll('.search-chip');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      const query = chip.dataset.query;
+      if (elements.searchInput) elements.searchInput.value = query;
+      if (elements.globalSearchInput) elements.globalSearchInput.value = query;
+      searchQuery = query;
+      applyFilters();
+    });
+  });
+
+  // Quick Port Resolver event listener
+  const resolveInput = document.getElementById('quick-resolve-input');
+  const resolveBtn = document.getElementById('quick-resolve-btn');
+  if (resolveBtn && resolveInput) {
+    resolveBtn.addEventListener('click', () => {
+      const portVal = resolveInput.value.trim();
+      if (!portVal) {
+        showToast('נא להקליד מספר פורט תקין', 'error');
+        return;
+      }
+      const portNum = parseInt(portVal, 10);
+      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+        showToast('פורט לא תקין. נא להקליד מספר בין 1 ל-65535', 'error');
+        return;
+      }
+      
+      // Look for the port in portsData
+      const foundPort = portsData.find(p => Number(p.port) === portNum || (p.ports && p.ports.includes(portNum)));
+      if (foundPort) {
+        // Open confirm modal directly
+        openConfirmModal('kill', foundPort);
+        resolveInput.value = '';
+      } else {
+        showToast(`פורט ${portNum} פנוי לחלוטין כעת! לא נמצא תהליך שמשתמש בו.`, 'success');
+      }
+    });
+    // Add Enter key support
+    resolveInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        resolveBtn.click();
+      }
+    });
+  }
 }
 
 // --- POLLING LOGIC ---
@@ -530,9 +915,13 @@ function aggregatePorts(ports) {
   for (const item of ports) {
     const command = item.commandLine || item.processName || '';
     const key = command === 'Unknown command' ? `${command}-${item.pid}` : `${item.user}-${command}`;
-    const group = groups.get(key) || { ...item, ports: [], pids: [], addresses: [] };
+    const group = groups.get(key) || { ...item, ports: [], pids: [], addresses: [], cpu: 0, memoryMb: 0 };
     if (!group.ports.includes(item.port)) group.ports.push(item.port);
-    if (!group.pids.includes(item.pid)) group.pids.push(item.pid);
+    if (!group.pids.includes(item.pid)) {
+      group.pids.push(item.pid);
+      group.cpu += item.cpu || 0;
+      group.memoryMb += item.memoryMb || 0;
+    }
     if (item.address && !group.addresses.includes(item.address)) group.addresses.push(item.address);
     groups.set(key, group);
   }
@@ -542,6 +931,8 @@ function aggregatePorts(ports) {
     pids: group.pids.sort((a, b) => a - b),
     instanceCount: group.pids.length,
     isAggregate: group.pids.length > 1,
+    cpu: parseFloat(group.cpu.toFixed(1)),
+    memoryMb: parseFloat(group.memoryMb.toFixed(1)),
   }));
 }
 
@@ -563,7 +954,7 @@ async function fetchPorts() {
   elements.emptyState.classList.add('hidden');
   
   try {
-    const response = await fetch('/api/ports');
+    const response = await fetch('/api/ports?bypassCache=true');
     if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
     const data = await response.json();
     portsData = data.ports || [];
@@ -678,20 +1069,7 @@ function applyFilters() {
   updateTableHeaders();
 
   if (activeFilter === 'system-resources') {
-    filteredProcesses = systemProcessesData.filter(proc => {
-      if (searchQuery) {
-        const pidStr = String(proc.pid);
-        const name = (proc.processName || '').toLowerCase();
-        const cmd = (proc.commandLine || '').toLowerCase();
-        const user = (proc.user || '').toLowerCase();
-        
-        return pidStr.includes(searchQuery) ||
-               name.includes(searchQuery) ||
-               cmd.includes(searchQuery) ||
-               user.includes(searchQuery);
-      }
-      return true;
-    });
+    filteredProcesses = systemProcessesData.filter(proc => matchSmartQuery(proc, searchQuery, false));
     updateResultsSummary(filteredProcesses.length);
     
     sortAndRender();
@@ -704,26 +1082,7 @@ function applyFilters() {
     if (activeFilter === 'user' && portObj.isSystem) return false;
 
     // 2. Search query filter
-    if (searchQuery) {
-      const portStr = String(portObj.port);
-      const pidStr = String(portObj.pid);
-      const name = (portObj.processName || '').toLowerCase();
-      const cmd = (portObj.commandLine || '').toLowerCase();
-      const user = (portObj.user || '').toLowerCase();
-      const source = getSourceInfo(portObj).path.toLowerCase();
-      const listener = getListenerInfo(portObj).label.toLowerCase();
-      
-      const match = portStr.includes(searchQuery) ||
-                    pidStr.includes(searchQuery) ||
-                    name.includes(searchQuery) ||
-                    cmd.includes(searchQuery) ||
-                    user.includes(searchQuery) ||
-                    source.includes(searchQuery) ||
-                    listener.includes(searchQuery);
-      if (!match) return false;
-    }
-
-    return true;
+    return matchSmartQuery(portObj, searchQuery, true);
   });
 
   // Group address-family duplicates, then show identical running commands together.
@@ -855,7 +1214,7 @@ function renderSystemProcessesTable() {
     } else {
       const killTitle = isReadOnlyMode 
         ? 'שרת מנהל הפורטים נמצא במצב "קריאה בלבד". שנה את מצב הבטיחות בהגדרות כדי לאפשר סגירה.'
-        : `סגור תהליך PID ${proc.pid} — דורש הקלדת אישור.`;
+        : `סגור תהליך PID ${proc.pid} (נדרש אישור)`;
         
       const pauseResumeBtn = proc.isSuspended
         ? `<button class="action-btn btn-success btn-sm btn-resume-proc" title="המשך פעילות תהליך ${pidText}">המשך</button>`
@@ -980,7 +1339,7 @@ function renderTable() {
         ? 'הגנת תהליכי מערכת: תהליך זה מוגדר כחלק ממערכת ההפעלה של macOS ולא ניתן לסגור אותו מטעמי בטיחות.'
         : isReadOnlyMode
           ? 'שרת מנהל הפורטים נמצא במצב "קריאה בלבד". שנה את מצב הבטיחות בהגדרות כדי לאפשר סגירה.'
-          : `סגור תהליך PID ${portObj.pid} בפורט ${portObj.port} — דורש הקלדת אישור.`;
+          : `סגור תהליך PID ${portObj.pid} בפורט ${portObj.port} (נדרש אישור)`;
 
     // Generate Port Badges HTML individually to prevent RTL wrapping comma bugs
     const portsArray = portObj.ports || [portObj.port];
@@ -1120,16 +1479,36 @@ function openConfirmModal(action, portObj) {
 
   // Prepare confirmation gate
   resetDestructiveConfirmation();
-  destructiveActionContext = { action, pid: String(portObj.pid) };
+  const risk = assessProcessRisk(portObj);
+  destructiveActionContext = { action, pid: String(portObj.pid), riskLevel: risk.level };
   elements.confirmRequiredPid.textContent = String(portObj.pid);
 
   if (action === 'kill') {
+    // Populate Risk Banner
+    const riskBanner = document.getElementById('modal-risk-banner');
+    const riskBadge = document.getElementById('modal-risk-badge');
+    const riskExplanation = document.getElementById('modal-risk-explanation');
+    if (riskBanner && riskBadge && riskExplanation) {
+      riskBanner.style.display = 'block';
+      riskBadge.textContent = risk.label;
+      riskBadge.className = 'risk-badge ' + risk.badgeClass;
+      riskExplanation.textContent = risk.explanation;
+    }
+
     elements.modalTitle.textContent = 'אישור סגירת תוכנה ותהליך';
     const portDesc = portObj.port && portObj.port !== '-' ? ` בפורט <strong>${portObj.port}</strong>` : '';
     elements.modalDesc.innerHTML = `פעולה זו תשלח אות כיבוי (<code>SIGTERM</code>) למזהה תהליך (PID) <strong>${portObj.pid}</strong>${portDesc}. סגור את התוכנה רק אם אתה בטוח שהיא אינה חיונית לפעילותך.`;
     elements.modalConfirmBtn.textContent = 'סגור תוכנה (Terminate)';
     elements.modalConfirmBtn.className = 'btn btn-danger';
-    elements.modalConfirmBtn.disabled = true;
+    
+    const confirmHelp = document.getElementById('confirm-help');
+    if (risk.level === 'low') {
+      if (confirmHelp) confirmHelp.style.display = 'none';
+      elements.modalConfirmBtn.disabled = false;
+    } else {
+      if (confirmHelp) confirmHelp.style.display = 'block';
+      elements.modalConfirmBtn.disabled = true;
+    }
     
     // Set confirmation button callback
     elements.modalConfirmBtn.onclick = async () => {
@@ -1173,6 +1552,9 @@ function resetDestructiveConfirmation() {
   elements.modalConfirmBtn.onclick = null;
   const confirmHelp = document.getElementById('confirm-help');
   if (confirmHelp) confirmHelp.style.display = 'block';
+
+  const riskBanner = document.getElementById('modal-risk-banner');
+  if (riskBanner) riskBanner.style.display = 'none';
 }
 
 function validateDestructiveConfirmation(portObj = null) {
@@ -1182,6 +1564,13 @@ function validateDestructiveConfirmation(portObj = null) {
   const requiredPid = portObj && typeof portObj.pid !== 'undefined'
     ? String(portObj.pid)
     : destructiveActionContext?.pid || elements.confirmRequiredPid.textContent;
+  
+  const riskLevel = portObj ? assessProcessRisk(portObj).level : destructiveActionContext?.riskLevel;
+  if (riskLevel === 'low') {
+    elements.modalConfirmBtn.disabled = false;
+    return true;
+  }
+
   const typedPidMatches = elements.confirmPidInput.value.trim() === requiredPid && requiredPid !== '--';
   const checkboxChecked = elements.confirmUnderstandCheckbox.checked;
   const isValid = activeAction === 'kill' && typedPidMatches && checkboxChecked;
@@ -1200,6 +1589,8 @@ function openDetailsModal(portObj) {
   elements.specSource.textContent = getSourceInfo(portObj).path;
   elements.specProtocol.textContent = portObj.protocol;
   elements.specType.textContent = portObj.typeDisplay || portObj.type;
+  elements.specCpu.textContent = `${Number(portObj.cpu || 0).toFixed(1)}%`;
+  elements.specMemory.textContent = `${Number(portObj.memoryMb || 0).toFixed(1)} MB`;
   elements.specCommand.textContent = portObj.commandLine;
 
   elements.btnCopyCommand.onclick = () => {
@@ -1242,6 +1633,7 @@ async function executeKill(pid, port) {
     
     const msg = isSystemKill ? `תהליך ${pid} נסגר בהצלחה!` : `תהליך ${pid} בפורט ${port} נסגר בהצלחה!`;
     showToast(msg, 'success');
+    logRecentAction('kill', isSystemKill ? `PID ${pid}` : `פורט ${port}`, isSystemKill ? `מזהה תהליך: ${pid}` : `מזהה תהליך: ${pid}`);
     return true;
   } catch (err) {
     showToast(err.message, 'error');
@@ -1310,7 +1702,7 @@ async function updateSystemUsage() {
 }
 
 function formatCacheBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (!Number.isFinite(bytes) || bytes < 0) return '-';
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -1333,6 +1725,7 @@ async function executeTrashCache(path) {
     }
     
     showToast(`תיקיית ה-Cache בנתיב ${path} הועברה לפח האשפה בהצלחה!`, 'success');
+    logRecentAction('trash-cache', path.split('/').pop() || path, `נתיב: ${path}`);
     return true;
   } catch (err) {
     showToast(err.message, 'error');
@@ -1355,6 +1748,7 @@ async function executeTrashCachesBatch(paths) {
     }
     
     showToast(`הועברו בהצלחה ${paths.length} תיקיות לפח האשפה!`, 'success');
+    logRecentAction('clean-cache', `${paths.length} תיקיות`, `ניקוי מרוכז של תיקיות Cache`);
     return true;
   } catch (err) {
     showToast(err.message, 'error');
@@ -1498,7 +1892,7 @@ async function updateStorageUsage() {
       elements.metricCacheUsage.textContent = formatCacheBytes(totalBytes);
     }
     if (elements.metricCacheDetail) {
-      elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות — אין מחיקה אוטומטית`;
+      elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות, ללא מחיקה אוטומטית`;
     }
     
     filterAndRenderCache();
@@ -1725,6 +2119,7 @@ async function suspendSystemProcess(pid) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'שגיאה בהשהיית התהליך');
     showToast(`תהליך ${pid} מושהה בהצלחה`, 'success');
+    logRecentAction('pause', `PID ${pid}`, `השהיית פעילות התהליך`);
     updateSystemUsage();
     if (activeFilter === 'system-resources') {
       fetchSystemProcesses();
@@ -1746,6 +2141,7 @@ async function resumeSystemProcess(pid) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'שגיאה בחידוש התהליך');
     showToast(`פעילות תהליך ${pid} חודשה בהצלחה`, 'success');
+    logRecentAction('resume', `PID ${pid}`, `חידוש פעילות התהליך`);
     updateSystemUsage();
     if (activeFilter === 'system-resources') {
       fetchSystemProcesses();
@@ -1779,7 +2175,7 @@ function getUsageLabel(percentage, resource) {
 }
 
 function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) return '—';
+  if (!Number.isFinite(bytes)) return '-';
   return `${(bytes / (1024 ** 3)).toFixed(bytes >= 1024 ** 3 ? 1 : 2)} GB`;
 }
 
@@ -1975,6 +2371,15 @@ function renderSimpleCards() {
   }
 
   // Helper to create card HTML
+  function resourceSummary(ports) {
+    const cpu = ports.reduce((sum, port) => sum + Number(port.cpu || 0), 0);
+    const memoryMb = ports.reduce((sum, port) => sum + Number(port.memoryMb || 0), 0);
+    return {
+      cpu: cpu.toFixed(1),
+      memoryMb: memoryMb.toFixed(1)
+    };
+  }
+
   function createCardElement(portObj) {
     const card = document.createElement('div');
     card.className = 'port-card';
@@ -1995,6 +2400,8 @@ function renderSimpleCards() {
     const appName = getFriendlyAppName(portObj);
     const sourceInfo = getSourceInfo(portObj);
     const listenerInfo = getListenerInfo(portObj);
+    const cpu = Number(portObj.cpu || 0).toFixed(1);
+    const memoryMb = Number(portObj.memoryMb || 0).toFixed(1);
 
     // Format folder path for simple view
     let folderDisplay = '';
@@ -2065,6 +2472,10 @@ function renderSimpleCards() {
           ${safetyBadgeHtml}
         </div>
         <div class="port-card-pid">מזהה תהליך (PID): ${pidText}</div>
+        <div class="port-card-resources-row" aria-label="צריכת משאבים">
+          <span class="port-card-resource-badge cpu">⚡ ${cpu}% CPU</span>
+          <span class="port-card-resource-badge memory">💾 ${memoryMb} MB RAM</span>
+        </div>
       </div>
       <div class="port-card-footer">
         <button class="port-card-details-link btn-details-action">
@@ -2184,10 +2595,15 @@ function renderSimpleCards() {
       
       const sessionVal = sessionStorage.getItem(cat.sessionKey);
       const isExpanded = sessionVal !== null ? (sessionVal === 'true') : cat.defaultExpanded;
+      const metrics = resourceSummary(cat.ports);
 
       accordion.innerHTML = `
         <div class="accordion-header" id="${cat.id}-toggle" role="button" aria-expanded="${isExpanded}" tabindex="0">
           <span>${cat.title} (${cat.ports.length} פעילים)</span>
+          <span class="accordion-header-metrics" aria-label="סיכום צריכת משאבים">
+            <span class="header-metric-badge cpu">⚡ ${metrics.cpu}%</span>
+            <span class="header-metric-badge memory">💾 ${metrics.memoryMb} MB</span>
+          </span>
           <svg class="accordion-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}">
             <polyline points="6 9 12 15 18 9"></polyline>
           </svg>
@@ -2239,10 +2655,15 @@ function renderSimpleCards() {
     const sessionKey = 'accordion_system_expanded';
     const sessionVal = sessionStorage.getItem(sessionKey);
     const isExpanded = sessionVal !== null ? (sessionVal === 'true') : defaultExp;
+    const metrics = resourceSummary(systemPorts);
 
     accordion.innerHTML = `
       <div class="accordion-header" id="system-accordion-toggle" role="button" aria-expanded="${isExpanded}" tabindex="0">
         <span>⚙️ תהליכי מערכת של macOS (עוד ${systemPorts.length} תהליכים מוגנים)</span>
+        <span class="accordion-header-metrics" aria-label="סיכום צריכת משאבים">
+          <span class="header-metric-badge cpu">⚡ ${metrics.cpu}%</span>
+          <span class="header-metric-badge memory">💾 ${metrics.memoryMb} MB</span>
+        </span>
         <svg class="accordion-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transform: ${isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'}">
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>מנהל פורטים — macOS Port Manager</title>
+  <title>מנהל פורטים (macOS Port Manager)</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔌%3C/text%3E%3C/svg%3E">
 </head>
@@ -20,7 +20,7 @@
         <span class="logo" role="img" aria-label="מנהל פורטים">🔌</span>
         <div class="brand-text">
           <h1>מה רץ לי במחשב?</h1>
-          <p class="subtitle">רואים אילו אפליקציות משתמשות ברשת — וסוגרים רק כשצריך</p>
+          <p class="subtitle">רואים אילו אפליקציות משתמשות ברשת, וסוגרים רק כשצריך</p>
         </div>
       </div>
       <div class="header-actions">
@@ -49,7 +49,7 @@
         </button>
         <div class="header-search-wrapper" style="position: relative; display: flex; align-items: center; width: 280px; margin-left: 12px; margin-right: 12px;">
           <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" style="position: absolute; right: 10px; color: var(--text-muted); pointer-events: none;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" id="global-search-input" placeholder="חיפוש מהיר של פורטים, תהליכים או Cache..." style="width: 100%; padding: 0.45rem 2.25rem 0.45rem 0.75rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-glass); border-radius: var(--radius-md); color: var(--text-primary); font-size: 0.82rem; font-family: inherit; transition: all var(--transition-fast); text-align: right;" onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(0, 230, 242, 0.15)';" onblur="this.style.borderColor='var(--border-glass)'; this.style.boxShadow='none';">
+          <input type="text" id="global-search-input" placeholder="חיפוש מהיר של פורטים, תהליכים או Cache..." style="width: 100%; padding: 0.45rem 2.25rem 0.45rem 0.75rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-glass); border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--font-size-sm); font-family: inherit; transition: all var(--transition-fast); text-align: right;" onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(0, 230, 242, 0.15)';" onblur="this.style.borderColor='var(--border-glass)'; this.style.boxShadow='none';">
         </div>
         <button id="info-trigger-btn" class="info-hub-btn" aria-label="פתח מדריך והסברים">
           <span>ⓘ</span>
@@ -116,10 +116,10 @@
           <section id="warning-banner" class="warning-banner glass hidden" style="margin-bottom: 20px;">
             <div class="warning-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
               <div style="display: flex; align-items: center; gap: 12px;">
-                <span class="warning-icon" style="font-size: 24px;">⚠️</span>
+                <span class="warning-icon" style="font-size: var(--font-size-2xl);">⚠️</span>
                 <div class="warning-title">
-                  <h3 style="margin: 0; color: #ff4b4b; font-size: 1.1rem;">זוהה עומס כבד במערכת</h3>
-                  <p id="warning-message" style="margin: 4px 0 0 0; font-size: 0.9rem; color: #aaa;">מומלץ לבדוק את התהליכים הבאים לפני סגירה או השהיה:</p>
+                  <h3 style="margin: 0; color: #ff4b4b; font-size: var(--font-size-lg);">זוהה עומס כבד במערכת</h3>
+                  <p id="warning-message" style="margin: 4px 0 0 0; font-size: var(--font-size-sm); color: #aaa;">מומלץ לבדוק את התהליכים הבאים לפני סגירה או השהיה:</p>
                 </div>
               </div>
               <button id="quick-clean-btn" class="btn btn-danger hidden" aria-hidden="true" tabindex="-1">אופטימיזציה מהירה</button>
@@ -142,6 +142,29 @@
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
               <input type="text" id="search-input" placeholder="חיפוש אפליקציה או מספר פורט…" autocomplete="off" aria-label="חיפוש אפליקציה או מספר פורט">
+            </div>
+
+            <!-- Search Quick Chips -->
+            <div id="search-chips-container" class="search-chips-container">
+              <span class="chips-label">קיצורים:</span>
+              <button class="search-chip" data-query="3000">🔌 3000</button>
+              <button class="search-chip" data-query="8080">🔌 8080</button>
+              <button class="search-chip" data-query="5173">🔌 5173</button>
+              <button class="search-chip" data-query="node">🟢 Node</button>
+              <button class="search-chip" data-query="postgres">🐘 Postgres</button>
+              <button class="search-chip" data-query="docker">🐳 Docker</button>
+            </div>
+
+            <!-- Quick Port Conflict Resolver -->
+            <div class="port-resolver-wrapper">
+              <div class="resolver-header">
+                <span class="resolver-title">⚡ משחרר פורטים מהיר</span>
+                <span class="resolver-subtitle">שגיאת Port Already in Use? שחררו את הפורט כאן בשניות</span>
+              </div>
+              <div class="resolver-form">
+                <input type="number" id="quick-resolve-input" placeholder="הקלד פורט, למשל: 3000" min="1" max="65535">
+                <button id="quick-resolve-btn" class="btn btn-primary">שחרר פורט</button>
+              </div>
             </div>
             
             <div class="view-mode-toggle" role="radiogroup" aria-label="מצב תצוגה">
@@ -166,8 +189,8 @@
                   <tr>
                     <th class="sortable" data-sort="port">פורט <span class="sort-indicator">▲</span></th>
                     <th class="sortable" data-sort="processName">אפליקציה ומקור</th>
-                    <th class="sortable column-pid" data-sort="pid">PID</th>
-                    <th class="sortable column-advanced" data-sort="address">כתובת האזנה</th>
+                    <th class="sortable column-pid" data-sort="pid">PID <span class="tooltip" data-tooltip="מזהה תהליך ייחודי (Process ID) המאפשר למערכת ההפעלה לזהות את האפליקציה המריצה">ⓘ</span></th>
+                    <th class="sortable column-advanced" data-sort="address">כתובת האזנה <span class="tooltip" data-tooltip="כתובת ה-IP בה התוכנה מאזינה. localhost/127.0.0.1 היא פנימית, בעוד 0.0.0.0 פתוחה לכל הרשת">ⓘ</span></th>
                     <th class="column-advanced">תקשורת</th>
                     <th>גישה</th>
                     <th class="column-command">פקודת הפעלה</th>
@@ -244,7 +267,7 @@
           <!-- Cache findings container -->
           <main class="ports-container glass cache-container" style="margin-top: 0;">
             <div class="cache-findings-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-glass); flex-wrap: wrap; gap: 8px;">
-              <h3 style="font-size: 1.1rem; color: var(--text-primary); margin: 0;">תיקיות Cache שנסרקו במערכת</h3>
+              <h3 style="font-size: var(--font-size-lg); color: var(--text-primary); margin: 0;">תיקיות Cache שנסרקו במערכת</h3>
               <div style="display: flex; gap: 8px;">
                 <button id="quick-clean-cache-btn" class="btn btn-success btn-sm hidden" type="button" style="display: inline-flex; align-items: center; gap: 4px;">
                   <svg class="icon-svg" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
@@ -268,10 +291,32 @@
       </div>
     </div>
 
+    <!-- Recent Actions History Panel (Collapsible) -->
+    <section id="recent-actions-panel" class="recent-actions-panel glass hidden">
+      <div class="recent-actions-header" id="recent-actions-toggle" role="button" aria-expanded="false" tabindex="0" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: pointer; user-select: none;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: var(--font-size-lg);">🕒</span>
+          <strong style="font-size: var(--font-size-sm); color: var(--text-primary);">פעולות אחרונות שבוצעו במערכת</strong>
+          <span id="recent-actions-badge" class="count-badge hidden" style="background: var(--color-primary); color: #000; font-size: 0.7rem; padding: 1px 5px; border-radius: 999px; font-weight: 700; margin-inline-start: 4px;">0</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button id="clear-actions-btn" class="btn btn-secondary btn-xs" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; min-height: auto;" type="button">נקה</button>
+          <svg class="accordion-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; transition: transform var(--transition-normal); transform: rotate(0deg);">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div class="recent-actions-content hidden" id="recent-actions-content" style="border-top: 1px solid var(--border-glass); background: rgba(0, 0, 0, 0.15); padding: 8px 16px;">
+        <ul id="recent-actions-list" class="recent-actions-list" style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px;">
+          <!-- Dynamic Items -->
+        </ul>
+      </div>
+    </section>
+
     <footer class="app-footer" aria-label="גרסה וזכויות יוצרים">
       <p>© <span id="copyright-year"></span> Bersaglio. כל הזכויות שמורות.</p>
       <div class="version-info">
-        <span>גרסה <bdi id="current-version">—</bdi></span>
+        <span>גרסה <bdi id="current-version">-</bdi></span>
         <span id="update-status" class="update-status" aria-live="polite">בודק עדכונים…</span>
         <button id="update-button" class="update-button hidden" type="button" aria-describedby="update-status">עדכן עכשיו</button>
       </div>
@@ -299,7 +344,7 @@
             <span class="mode-icon">👁️</span>
             <div class="mode-text">
               <strong>קריאה בלבד (Read-Only)</strong>
-              <small>לצפייה בלבד — כל פעולות הסגירה והאתחול חסומות</small>
+              <small>לצפייה בלבד (כל פעולות הסגירה והאתחול חסומות)</small>
             </div>
           </label>
           <label class="mode-option mode-allowlist">
@@ -357,27 +402,27 @@
         <div class="status-grid">
           <div class="status-row">
             <span class="status-label">מצב הגנה</span>
-            <span class="status-val" id="settings-status-mode">—</span>
+            <span class="status-val" id="settings-status-mode">-</span>
           </div>
           <div class="status-row">
             <span class="status-label">פורטים מותרים</span>
-            <span class="status-val" id="settings-status-allowlist">—</span>
+            <span class="status-val" id="settings-status-allowlist">-</span>
           </div>
           <div class="status-row">
             <span class="status-label">פורטים חסומים</span>
-            <span class="status-val" id="settings-status-blocklist">—</span>
+            <span class="status-val" id="settings-status-blocklist">-</span>
           </div>
           <div class="status-row">
             <span class="status-label">משתמש נוכחי</span>
-            <span class="status-val" id="settings-status-user">—</span>
+            <span class="status-val" id="settings-status-user">-</span>
           </div>
           <div class="status-row">
             <span class="status-label">מגבלת פעולות</span>
-            <span class="status-val" id="settings-status-rate-limit">—</span>
+            <span class="status-val" id="settings-status-rate-limit">-</span>
           </div>
           <div class="status-row">
             <span class="status-label">זמן השהייה</span>
-            <span class="status-val" id="settings-status-cooldown">—</span>
+            <span class="status-val" id="settings-status-cooldown">-</span>
           </div>
         </div>
       </section>
@@ -393,22 +438,32 @@
       </div>
       <div class="modal-body">
         <p id="modal-desc">האם אתה בטוח שברצונך לסגור את התוכנה המחוברת לפורט זה?</p>
+        
+        <!-- Risk Level Banner -->
+        <div id="modal-risk-banner" class="modal-risk-banner">
+          <div class="risk-badge-row">
+            <span class="risk-label">רמת סיכון לסגירה: <span class="tooltip" data-tooltip="הערכת הסיכון של כיבוי התהליך. רמה גבוהה עלולה לפגוע ברכיבי מערכת או בסיסי נתונים">ⓘ</span></span>
+            <span id="modal-risk-badge" class="risk-badge">-</span>
+          </div>
+          <p id="modal-risk-explanation" class="risk-explanation">-</p>
+        </div>
+
         <div class="process-preview-box">
           <div class="preview-row">
             <span class="preview-label">פורט:</span>
-            <span class="preview-value font-bold" id="preview-port">--</span>
+            <span class="preview-value font-bold" id="preview-port">-</span>
           </div>
           <div class="preview-row">
             <span class="preview-label">שם תוכנה:</span>
-            <span class="preview-value font-bold" id="preview-process">--</span>
+            <span class="preview-value font-bold" id="preview-process">-</span>
           </div>
           <div class="preview-row">
             <span class="preview-label">מזהה (PID):</span>
-            <span class="preview-value font-mono" id="preview-pid">--</span>
+            <span class="preview-value font-mono" id="preview-pid">-</span>
           </div>
           <div class="preview-row command-row">
             <span class="preview-label">פקודת הפעלה:</span>
-            <span class="preview-value font-mono command-text" id="preview-command" dir="ltr">--</span>
+            <span class="preview-value font-mono command-text" id="preview-command" dir="ltr">-</span>
           </div>
         </div>
         <p class="modal-warning" id="modal-warning">
@@ -416,7 +471,7 @@
         </p>
         <div class="confirm-gate" id="confirm-help">
           <label class="confirm-field" for="confirm-pid-input">
-            הקלד את מזהה התהליך (PID) <span id="confirm-required-pid" class="font-mono">--</span> כדי לאפשר סגירה:
+            הקלד את מזהה התהליך (PID) <span id="confirm-required-pid" class="font-mono clickable-pid-badge" title="לחץ להעתקה והזנה מהירה">-</span> כדי לאפשר סגירה:
             <input id="confirm-pid-input" class="confirm-input font-mono" inputmode="numeric" autocomplete="off" placeholder="הקלד PID כאן">
           </label>
           <label class="confirm-checkbox">
@@ -443,41 +498,49 @@
         <div class="spec-grid">
           <div class="spec-item">
             <span class="spec-label">פורט</span>
-            <span class="spec-val font-bold" id="spec-port">--</span>
+            <span class="spec-val font-bold" id="spec-port">-</span>
           </div>
           <div class="spec-item">
             <span class="spec-label">שם תוכנה</span>
-            <span class="spec-val font-bold" id="spec-name">--</span>
+            <span class="spec-val font-bold" id="spec-name">-</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">מזהה תהליך (PID)</span>
-            <span class="spec-val font-mono" id="spec-pid">--</span>
+            <span class="spec-label">מזהה תהליך (PID) <span class="tooltip" data-tooltip="מזהה תהליך ייחודי שמערכת ההפעלה הקצתה לתוכנה הרצה">ⓘ</span></span>
+            <span class="spec-val font-mono" id="spec-pid">-</span>
           </div>
           <div class="spec-item">
             <span class="spec-label">משתמש מפעיל</span>
-            <span class="spec-val" id="spec-user">--</span>
+            <span class="spec-val" id="spec-user">-</span>
           </div>
           <div class="spec-item">
-            <span class="spec-label">כתובת האזנה</span>
-            <span class="spec-val font-mono" id="spec-address" dir="ltr">--</span>
+            <span class="spec-label">כתובת האזנה <span class="tooltip" data-tooltip="כתובת ה-IP והממשק דרכו התוכנה מקבלת חיבורים. localhost/127.0.0.1 היא פנימית, בעוד 0.0.0.0 פתוחה לרשת">ⓘ</span></span>
+            <span class="spec-val font-mono" id="spec-address" dir="ltr">-</span>
           </div>
           <div class="spec-item spec-source-item">
             <span class="spec-label">קובץ / תיקיית מקור</span>
-            <span class="spec-val font-mono" id="spec-source" dir="ltr">--</span>
+            <span class="spec-val font-mono" id="spec-source" dir="ltr">-</span>
           </div>
           <div class="spec-item">
             <span class="spec-label">פרוטוקול</span>
-            <span class="spec-val" id="spec-protocol">--</span>
+            <span class="spec-val" id="spec-protocol">-</span>
           </div>
           <div class="spec-item">
             <span class="spec-label">סוג IP</span>
-            <span class="spec-val" id="spec-type">--</span>
+            <span class="spec-val" id="spec-type">-</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">צריכת CPU</span>
+            <span class="spec-val font-bold" id="spec-cpu" style="color: var(--color-primary);">-</span>
+          </div>
+          <div class="spec-item">
+            <span class="spec-label">צריכת זיכרון (RAM)</span>
+            <span class="spec-val font-bold" id="spec-memory" style="color: var(--color-success);">-</span>
           </div>
         </div>
         <div class="spec-command-section">
           <span class="spec-label">נתיב / פקודת הפעלה מלאה במערכת (Command Line)</span>
           <div class="command-box-wrapper">
-            <pre class="command-pre" dir="ltr"><code id="spec-command">--</code></pre>
+            <pre class="command-pre" dir="ltr"><code id="spec-command">-</code></pre>
             <button class="btn btn-copy" id="btn-copy-command">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-copy">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -503,28 +566,28 @@
       </div>
       <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
         <section class="safety-banner glass" style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem;">
-          <div class="safety-icon" style="font-size: 1.5rem;">🛡️</div>
+          <div class="safety-icon" style="font-size: var(--font-size-2xl);">🛡️</div>
           <div>
-            <h2 style="font-size: 1rem; margin-bottom: 0.25rem;">אתם מוגנים</h2>
-            <p style="color: var(--text-secondary); font-size: 0.875rem; margin: 0;">תהליכי macOS והאפליקציה הזו מוגנים מסגירה. כל המידע נשאר במחשב.</p>
+            <h2 style="font-size: var(--font-size-base); margin-bottom: 0.25rem;">אתם מוגנים</h2>
+            <p style="color: var(--text-secondary); font-size: var(--font-size-sm); margin: 0;">תהליכי macOS והאפליקציה הזו מוגנים מסגירה. כל המידע נשאר במחשב.</p>
           </div>
         </section>
         <div class="education-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
           <div class="education-item">
-            <h4 style="margin-bottom: 6px; font-size: 0.95rem;">🔌 מהו פורט (Port)?</h4>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">חשבו על המחשב שלכם כעל בניין משרדים ענק. כל תוכנה שצריכה לתקשר עם הרשת "שוכרת" חדר בבניין. מספר החדר הזה הוא ה**פורט**. לדוגמה, שרת פיתוח של אתר אינטרנט משתמש לרוב בחדר (פורט) 3000.</p>
+            <h4 style="margin-bottom: 6px; font-size: var(--font-size-base);">🔌 מהו פורט (Port)?</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.4;">חשבו על המחשב שלכם כעל בניין משרדים ענק. כל תוכנה שצריכה לתקשר עם הרשת "שוכרת" חדר בבניין. מספר החדר הזה הוא ה**פורט**. לדוגמה, שרת פיתוח של אתר אינטרנט משתמש לרוב בחדר (פורט) 3000.</p>
           </div>
           <div class="education-item">
-            <h4 style="margin-bottom: 6px; font-size: 0.95rem;">🆔 מהו מזהה תהליך (PID)?</h4>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">**Process ID** הוא מספר זיהוי ייחודי שמערכת ההפעלה מעניקה לכל תוכנה שרצה כרגע. פורט יכול להיות מופעל רק על ידי תוכנה אחת בכל רגע נתון. ה-PID עוזר לנו לדעת בדיוק איזו תוכנה מחזיקה בפורט.</p>
+            <h4 style="margin-bottom: 6px; font-size: var(--font-size-base);">🆔 מהו מזהה תהליך (PID)?</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.4;">**Process ID** הוא מספר זיהוי ייחודי שמערכת ההפעלה מעניקה לכל תוכנה שרצה כרגע. פורט יכול להיות מופעל רק על ידי תוכנה אחת בכל רגע נתון. ה-PID עוזר לנו לדעת בדיוק איזו תוכנה מחזיקה בפורט.</p>
           </div>
           <div class="education-item">
-            <h4 style="margin-bottom: 6px; font-size: 0.95rem;">⚠️ מה קורה כשסוגרים פורט (Terminate)?</h4>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">כאשר אתם מבצעים "סגירת תהליך", אתם מכבים את התוכנה שמפעילה את הפורט. אם זו תוכנת פיתוח שלכם, זה בטוח. אך אם מדובר בבסיס נתונים פעיל (כמו Postgres) או תהליך מערכת של macOS - זה עלול לגרום לאובדן עבודה שלא נשמרה.</p>
+            <h4 style="margin-bottom: 6px; font-size: var(--font-size-base);">⚠️ מה קורה כשסוגרים פורט (Terminate)?</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.4;">כאשר אתם מבצעים "סגירת תהליך", אתם מכבים את התוכנה שמפעילה את הפורט. אם זו תוכנת פיתוח שלכם, זה בטוח. אך אם מדובר בבסיס נתונים פעיל (כמו Postgres) או תהליך מערכת של macOS - זה עלול לגרום לאובדן עבודה שלא נשמרה.</p>
           </div>
           <div class="education-item">
-            <h4 style="margin-bottom: 6px; font-size: 0.95rem;">🛡️ כיצד מנגנון הבטיחות מגן עליכם?</h4>
-            <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">כדי שלא תעשו טעויות בטעות, המערכת מונעת סגירה של תהליכי מערכת חיוניים של macOS. במקרה של סגירת פורטים מותרים, תתבקשו להקליד את מספר ה-PID של התוכנה ולסמן תיבת אישור - דרך בטוחה למנוע לחיצה שגויה.</p>
+            <h4 style="margin-bottom: 6px; font-size: var(--font-size-base);">🛡️ כיצד מנגנון הבטיחות מגן עליכם?</h4>
+            <p style="font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.4;">כדי שלא תעשו טעויות בטעות, המערכת מונעת סגירה של תהליכי מערכת חיוניים של macOS. במקרה של סגירת פורטים מותרים, תתבקשו להקליד את מספר ה-PID של התוכנה ולסמן תיבת אישור - דרך בטוחה למנוע לחיצה שגויה.</p>
           </div>
         </div>
       </div>

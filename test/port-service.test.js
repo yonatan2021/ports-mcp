@@ -275,5 +275,93 @@ test('suspendProcess/resumeProcess/killProcess operate on target pid', async () 
   assert.deepEqual(signals, [[5678, 'SIGSTOP'], [5678, 'SIGCONT'], [5678, 'SIGTERM']]);
 });
 
+test('listPorts caches results and bypassCache option works', async () => {
+  let callCount = 0;
+  const service = createPortService({
+    listPorts: async () => {
+      callCount++;
+      return [{ port: 3000, pid: 12345, processName: 'node', user: 'yoni' }];
+    },
+    portsCacheTtl: 1000 // 1s TTL
+  });
+
+  // First call should run implementation
+  const res1 = await service.listPorts();
+  assert.equal(callCount, 1);
+  assert.equal(res1[0].port, 3000);
+
+  // Second call should return cached value (callCount remains 1)
+  const res2 = await service.listPorts();
+  assert.equal(callCount, 1);
+  assert.deepEqual(res1, res2);
+
+  // Calling with bypassCache: true should force a refresh
+  const res3 = await service.listPorts({ bypassCache: true });
+  assert.equal(callCount, 2);
+  assert.deepEqual(res1, res3);
+});
+
+test('portsCache is invalidated on process/port kill, suspend, and resume', async () => {
+  let callCount = 0;
+  let signalsSent = [];
+  const psStdout = ` %CPU   RSS STAT   PID USER COMM\n  0.0  51200 S   12345 yoni /usr/local/bin/node\n`;
+  const runner = {
+    execFile: async () => ({ stdout: psStdout, stderr: '', exitCode: 0 })
+  };
+
+  const service = createPortService({
+    runner,
+    listPorts: async () => {
+      callCount++;
+      return [{ port: 3000, pid: 12345, processName: 'node', user: 'yoni', isSystem: false }];
+    },
+    killFn: (pid, sig) => {
+      signalsSent.push([pid, sig]);
+    },
+    portsCacheTtl: 10000 // 10s TTL
+  });
+
+  // Warm cache
+  await service.listPorts();
+  assert.equal(callCount, 1);
+
+  // Verify cached
+  await service.listPorts();
+  assert.equal(callCount, 1);
+
+  // 1. killProcessOnPort invalidates cache
+  await service.killProcessOnPort({ port: 3000, pid: 12345, confirm: true });
+  await service.listPorts();
+  assert.equal(callCount, 2); // Increased
+
+  // Warm cache again
+  await service.listPorts();
+  assert.equal(callCount, 2);
+
+  // 2. suspendProcess invalidates cache
+  await service.suspendProcess({ pid: 12345, confirm: true });
+  await service.listPorts();
+  assert.equal(callCount, 3); // Increased
+
+  // Warm cache again
+  await service.listPorts();
+  assert.equal(callCount, 3);
+
+  // 3. resumeProcess invalidates cache
+  await service.resumeProcess({ pid: 12345 });
+  await service.listPorts();
+  assert.equal(callCount, 4); // Increased
+
+  // Warm cache again
+  await service.listPorts();
+  assert.equal(callCount, 4);
+
+  // 4. killProcess invalidates cache
+  await service.killProcess({ pid: 12345, confirm: true });
+  await service.listPorts();
+  assert.equal(callCount, 5); // Increased
+});
+
+
 
 

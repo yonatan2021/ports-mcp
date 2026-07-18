@@ -1,5 +1,5 @@
 /**
- * settings.js — Safety Settings Panel module
+ * settings.js : Safety Settings Panel module
  *
  * Manages the safety configuration panel UI in Hebrew:
  * - Permission mode selector (read-only / allowlist / blocklist)
@@ -166,7 +166,7 @@
 
   function renderAll() {
     if (!safetyState) {
-      els.modeStatusBadge.textContent = '—';
+      els.modeStatusBadge.textContent = '-';
       els.modeLabel.textContent = 'אין נתוני אבטחה';
       renderAllowlist();
       renderBlocklist();
@@ -260,20 +260,20 @@
 
   function renderStatus() {
     if (!safetyState) {
-      els.statusMode.textContent = '—';
-      els.statusAllowlist.textContent = '—';
-      els.statusBlocklist.textContent = '—';
-      els.statusUser.textContent = '—';
-      els.statusRateLimit.textContent = '—';
-      els.statusCooldown.textContent = '—';
+      els.statusMode.textContent = '-';
+      els.statusAllowlist.textContent = '-';
+      els.statusBlocklist.textContent = '-';
+      els.statusUser.textContent = '-';
+      els.statusRateLimit.textContent = '-';
+      els.statusCooldown.textContent = '-';
       return;
     }
 
-    els.statusMode.textContent = modeTranslations[safetyState.mode] || safetyState.mode || '—';
+    els.statusMode.textContent = modeTranslations[safetyState.mode] || safetyState.mode || '-';
     els.statusAllowlist.textContent = (safetyState.allowlist || []).length + ' פורטים';
     els.statusBlocklist.textContent = (safetyState.blocklist || []).length + ' פורטים';
-    els.statusUser.textContent = safetyState.currentUser || '—';
-    els.statusRateLimit.textContent = (safetyState.maxOpsPerMinute || '—') + ' לדקה';
+    els.statusUser.textContent = safetyState.currentUser || '-';
+    els.statusRateLimit.textContent = (safetyState.maxOpsPerMinute || '-') + ' לדקה';
     els.statusCooldown.textContent = ((safetyState.cooldownMs || 0) / 1000) + ' שנ\'';
   }
 
@@ -322,7 +322,7 @@
       `;
     }
 
-    els.headerSafetyBadge.title = 'מצב הגנה: ' + (modeTranslations[mode] || mode) + (mode === 'read-only' ? ' — כל פעולות הסגירה חסומות' : ' — מותר לבצע פעולות בכפוף לאבטחה');
+    els.headerSafetyBadge.title = 'מצב הגנה: ' + (modeTranslations[mode] || mode) + (mode === 'read-only' ? ' (כל פעולות הסגירה חסומות)' : ' (מותר לבצע פעולות בכפוף לאבטחה)');
   }
 
   // ─── Event Handlers ────────────────────────────────────────

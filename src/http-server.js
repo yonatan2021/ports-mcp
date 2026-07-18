@@ -85,9 +85,10 @@ function createApp({
   });
 
 
-  app.get('/api/ports', async (_req, res) => {
+  app.get('/api/ports', async (req, res) => {
     try {
-      const ports = await service.listPorts();
+      const bypassCache = req.query.bypassCache === 'true' || req.query.refresh === 'true';
+      const ports = await service.listPorts({ bypassCache });
       res.json({ ports });
     } catch (error) {
       sendError(res, error);

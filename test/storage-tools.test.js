@@ -65,6 +65,10 @@ test('getCacheDetails categorizes folders and calculates sizes with mocked homeD
   await fs.mkdir(path.join(cacheDir, 'Yarn'), { recursive: true });
   await fs.mkdir(path.join(cwd, '.next', 'cache'), { recursive: true });
   await fs.mkdir(path.join(cwd, 'node_modules', '.cache'), { recursive: true });
+  await fs.mkdir(path.join(homeDir, '.gradle', 'caches'), { recursive: true });
+  await fs.mkdir(path.join(homeDir, '.cargo', 'registry'), { recursive: true });
+  await fs.mkdir(path.join(homeDir, '.cargo', 'git'), { recursive: true });
+  await fs.mkdir(path.join(cacheDir, 'CocoaPods'), { recursive: true });
 
   const runner = {
     execFile: async (file, args) => {
@@ -99,6 +103,26 @@ test('getCacheDetails categorizes folders and calculates sizes with mocked homeD
     assert.ok(nextItem);
     assert.equal(nextItem.category, 'SAFE_TO_CLEAR');
     assert.ok(nextItem.bytes > 0);
+
+    const gradleItem = details.find(i => i.name === 'Gradle Cache');
+    assert.ok(gradleItem);
+    assert.equal(gradleItem.category, 'SAFE_TO_CLEAR');
+    assert.ok(gradleItem.bytes > 0);
+
+    const cargoRegItem = details.find(i => i.name === 'Cargo Registry Cache');
+    assert.ok(cargoRegItem);
+    assert.equal(cargoRegItem.category, 'SAFE_TO_CLEAR');
+    assert.ok(cargoRegItem.bytes > 0);
+
+    const cargoGitItem = details.find(i => i.name === 'Cargo Git Cache');
+    assert.ok(cargoGitItem);
+    assert.equal(cargoGitItem.category, 'SAFE_TO_CLEAR');
+    assert.ok(cargoGitItem.bytes > 0);
+
+    const cocoapodsItem = details.find(i => i.name === 'CocoaPods Cache');
+    assert.ok(cocoapodsItem);
+    assert.equal(cocoapodsItem.category, 'SAFE_TO_CLEAR');
+    assert.ok(cocoapodsItem.bytes > 0);
   } finally {
     await fs.rm(baseDir, { recursive: true, force: true });
   }
