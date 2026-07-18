@@ -88,3 +88,4 @@ docker-compose.override.yml
 *.crt
 *.cert
 *.pub
+docs/superpowers/**/
