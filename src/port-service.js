@@ -143,6 +143,68 @@ function createPortService(options = {}) {
   const homeDir = options.homeDir || os.homedir();
   const cwd = options.cwd || process.cwd();
 
+  const sizeCache = {
+    data: new Map(),
+    get(dirPath) {
+      const entry = this.data.get(path.normalize(dirPath));
+      if (entry && Date.now() - entry.timestamp < 30_000) {
+        return entry.bytes;
+      }
+      return null;
+    },
+    set(dirPath, bytes) {
+      this.data.set(path.normalize(dirPath), { bytes, timestamp: Date.now() });
+    },
+    delete(dirPath) {
+      this.data.delete(path.normalize(dirPath));
+    },
+    clear() {
+      this.data.clear();
+    }
+  };
+
+  async function getSizesForPaths(paths) {
+    const normPaths = paths.map(p => path.normalize(p));
+    const missingPaths = [];
+    const results = {};
+
+    for (const p of normPaths) {
+      const cached = sizeCache.get(p);
+      if (cached !== null) {
+        results[p] = cached;
+      } else {
+        missingPaths.push(p);
+      }
+    }
+
+    if (missingPaths.length > 0) {
+      try {
+        const { stdout } = await runner.execFile('du', ['-sk', ...missingPaths], { allowNonZero: true });
+        const sizeMap = new Map();
+        String(stdout || '').split('\n').forEach(line => {
+          const match = line.match(/^(\d+)\s+(.+)$/);
+          if (match) {
+            sizeMap.set(path.normalize(match[2]), Number(match[1]) * 1024);
+          }
+        });
+
+        for (const p of missingPaths) {
+          const bytes = sizeMap.get(p) || 0;
+          sizeCache.set(p, bytes);
+          results[p] = bytes;
+        }
+      } catch (err) {
+        for (const p of missingPaths) {
+          sizeCache.set(p, 0);
+          results[p] = 0;
+        }
+        throw err;
+      }
+    }
+
+    return results;
+  }
+
   function checkProcessBlocklist(name) {
     const blocked = [...PROCESS_BLOCKLIST].find(b => name.toLowerCase() === b.toLowerCase());
     if (blocked) throw new PortManagerError('PROCESS_BLOCKED', `Process "${name}" is on the system blocklist and cannot be terminated.`, { status: 403, details: { processName: name } });
@@ -185,24 +247,67 @@ function createPortService(options = {}) {
   }
 
   async function getProcessCommands(pids) {
-    const entries = await Promise.all(pids.map(async (pid) => {
-      try { const { stdout } = await runner.execFile('ps', ['-p', String(pid), '-o', 'command='], { allowNonZero: true }); return [pid, stdout.trim() || 'Unknown command']; }
-      catch { return [pid, 'Unknown command']; }
-    }));
-    return Object.fromEntries(entries);
+    if (pids.length === 0) return {};
+    try {
+      const { stdout } = await runner.execFile('ps', ['-A', '-o', 'pid,command'], { allowNonZero: true });
+      const lines = stdout.split('\n');
+      const commandMap = {};
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const match = trimmed.match(/^(\d+)\s+(.+)$/);
+        if (match) {
+          const pid = Number(match[1]);
+          const command = match[2];
+          commandMap[pid] = command;
+        }
+      }
+      const result = {};
+      for (const pid of pids) {
+        result[pid] = commandMap[pid] || 'Unknown command';
+      }
+      return result;
+    } catch (err) {
+      const entries = await Promise.all(pids.map(async (pid) => {
+        try { const { stdout } = await runner.execFile('ps', ['-p', String(pid), '-o', 'command='], { allowNonZero: true }); return [pid, stdout.trim() || 'Unknown command']; }
+        catch { return [pid, 'Unknown command']; }
+      }));
+      return Object.fromEntries(entries);
+    }
   }
 
   async function getProcessWorkingDirectories(pids) {
-    const entries = await Promise.all(pids.map(async (pid) => {
-      try {
-        const { stdout } = await runner.execFile('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { allowNonZero: true });
-        const workingDirectory = String(stdout || '').split('\n').find(line => line.startsWith('n/'))?.slice(1);
-        return [pid, workingDirectory || null];
-      } catch {
-        return [pid, null];
+    if (pids.length === 0) return {};
+    try {
+      const pidList = pids.join(',');
+      const { stdout } = await runner.execFile('lsof', ['-a', '-p', pidList, '-d', 'cwd', '-Fn'], { allowNonZero: true });
+      const lines = String(stdout || '').split('\n').map(l => l.trim()).filter(Boolean);
+      const workingDirectoryMap = {};
+      let currentPid = null;
+      for (const line of lines) {
+        if (line.startsWith('p')) {
+          currentPid = Number(line.slice(1));
+        } else if (line.startsWith('n/') && currentPid !== null) {
+          workingDirectoryMap[currentPid] = line.slice(1);
+        }
       }
-    }));
-    return Object.fromEntries(entries);
+      const result = {};
+      for (const pid of pids) {
+        result[pid] = workingDirectoryMap[pid] || null;
+      }
+      return result;
+    } catch (err) {
+      const entries = await Promise.all(pids.map(async (pid) => {
+        try {
+          const { stdout } = await runner.execFile('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn'], { allowNonZero: true });
+          const workingDirectory = String(stdout || '').split('\n').find(line => line.startsWith('n/'))?.slice(1);
+          return [pid, workingDirectory || null];
+        } catch {
+          return [pid, null];
+        }
+      }));
+      return Object.fromEntries(entries);
+    }
   }
 
   async function findProcessByPort({ port, pid } = {}) {
@@ -345,11 +450,10 @@ function createPortService(options = {}) {
     let cacheItems = [];
     if (cachePaths.length > 0) {
       try {
-        const { stdout } = await runner.execFile('du', ['-sk', ...cachePaths], { allowNonZero: true });
-        cacheItems = String(stdout || '').split('\n').flatMap(line => {
-          const match = line.match(/^(\d+)\s+(.+)$/);
-          if (!match) return [];
-          return [{ name: path.basename(match[2]), path: match[2], bytes: Number(match[1]) * 1024 }];
+        const sizeMap = await getSizesForPaths(cachePaths);
+        cacheItems = cachePaths.map(p => {
+          const normPath = path.normalize(p);
+          return { name: path.basename(p), path: p, bytes: sizeMap[normPath] || 0 };
         }).filter(item => Number.isFinite(item.bytes)).sort((a, b) => b.bytes - a.bytes).slice(0, 6);
       } catch {
         // Keep disk data useful even when individual cache folders are unavailable.
@@ -538,24 +642,17 @@ function createPortService(options = {}) {
       items = checkedItems;
     }
 
-    // Calculate sizes using 'du -sk'
+    // Calculate sizes
     if (items.length > 0) {
       const paths = items.map(i => i.path);
       try {
-        const { stdout } = await runner.execFile('du', ['-sk', ...paths], { allowNonZero: true });
-        const sizeMap = new Map();
-        String(stdout || '').split('\n').forEach(line => {
-          const match = line.match(/^(\d+)\s+(.+)$/);
-          if (match) {
-            sizeMap.set(path.normalize(match[2]), Number(match[1]) * 1024);
-          }
-        });
+        const sizeMap = await getSizesForPaths(paths);
         
         items = items.map(item => {
           const normPath = path.normalize(item.path);
           return {
             ...item,
-            bytes: sizeMap.get(normPath) || 0
+            bytes: sizeMap[normPath] || 0
           };
         }).filter(item => item.bytes > 0);
       } catch {
@@ -622,6 +719,7 @@ function createPortService(options = {}) {
     }
 
     for (const p of targetPaths) {
+      sizeCache.delete(p);
       let trashed = false;
       try {
         const { shell } = require('electron');
