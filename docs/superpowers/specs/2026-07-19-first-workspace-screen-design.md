@@ -15,17 +15,17 @@ Make the ports screen feel like a calm daily-use tool: a person should see the r
 
 ### Header
 
-The header contains only product identity, a compact connection/safety indicator, refresh, and the existing safety-settings entry point. It has no global search and no focus-mode control. On narrow screens, controls wrap into one full-width, touch-safe action row without horizontal clipping.
+The header contains product identity, a compact connection/safety indicator, refresh, the existing safety-settings entry point, and a compact focus-mode control. It has no global-search field. On narrow screens, controls wrap into one full-width, touch-safe action row without horizontal clipping.
 
 ### Ports workspace
 
-The page starts with the workspace title, result count, and one primary search field. A single compact filter row follows: all processes, my applications, and macOS. The simple/advanced view selector remains available but is visually secondary to the search and filters.
+The page starts with the workspace title, result count, and one primary search field. This keeps the existing search capability but removes the duplicate global field. A single compact filter row follows: all processes, my applications, and macOS. The simple/advanced view selector remains available but is visually secondary to the search and filters.
 
-The process list directly follows these controls. System metrics, education, history, and other secondary surfaces are not placed ahead of the list; they remain available as existing secondary content or via focus mode without changing their data behavior.
+The process list directly follows these controls. Existing system metrics are retained as a compact status strip that does not dominate the first screen. Education, history, and other secondary surfaces stay available but are not placed ahead of the list. Focus mode remains a persisted, compact control that hides the metrics, education, and history; it does not change data behavior or safety rules.
 
 ### Contextual port release
 
-The release-port form is hidden by default. It opens only when a user invokes the existing contextual release action or searches for a numeric port. Once open, it retains the current input validation, safety checks, confirmation behavior, and feedback. Search chips are removed from the primary workspace because they compete with the single search affordance.
+The release-port form is hidden by default. The existing quick action is retained as its explicit trigger, but the redundant quick-search action is removed. A numeric port search may also reveal the form. Once open, it retains the current input validation, safety checks, confirmation behavior, and feedback. Search chips are removed from the primary workspace because they compete with the single search affordance.
 
 ## Layout and visual rules
 
@@ -33,15 +33,15 @@ The release-port form is hidden by default. It opens only when a user invokes th
 - Use a 4/8px spacing rhythm with 16px section padding and 24px separation between major regions.
 - Keep body text at 16px on narrow screens; supporting text may be 14px only where contrast remains clear.
 - Every interactive control in the primary mobile flow is at least 44px high, with at least 8px between neighboring touch targets.
-- Do not use emoji as structural navigation or action icons. Existing SVG icons are retained; any new iconography uses the same stroke style.
+- Do not add emoji as structural navigation or action icons. Existing structural emojis are replaced with matching inline SVG icons where that does not change the action behavior; existing process-category signals can remain textual until separately redesigned.
 - Prefer dividers and hierarchy over extra cards, shadows, pills, and instructional copy.
 - All focus styles remain visible; reduced-motion behavior remains unchanged.
 
 ## Interaction and state
 
-- The primary search synchronizes with the existing filtering state. Removing the global-search input must not remove URL/state behavior, search shortcuts, or cache-search behavior.
+- The primary ports search synchronizes with the existing filtering state. Removing the global-search input must not remove ports-search behavior or Cache-search behavior.
 - Numeric searches expose the release affordance without opening it automatically or running any action.
-- The advanced table remains user-selectable and preserves its current process actions and safety restrictions.
+- The advanced table remains user-selectable and preserves its current process actions and safety restrictions. The existing focus-mode persistence and accessibility announcements also remain intact.
 - Existing destructive actions still require their current confirmation gates. The redesign only changes their placement, not permission or confirmation logic.
 - No page reload, data fetch, or process operation is introduced by opening/closing the release form.
 
