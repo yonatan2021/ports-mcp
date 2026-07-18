@@ -2169,67 +2169,6 @@ function filterAndRenderCache() {
   ['SAFE_TO_CLEAR', 'NEEDS_CONFIRMATION', 'SYSTEM_PROTECTED'].forEach(category => {
     elements.cacheGroups.appendChild(renderCacheGroup(category, items.filter(item => item.category === category)));
   });
-  return;
-
-  // Sort: category order
-  const categoryOrder = { SAFE_TO_CLEAR: 1, NEEDS_CONFIRMATION: 2, SYSTEM_PROTECTED: 3 };
-  items.sort((a, b) => (categoryOrder[a.category] || 99) - (categoryOrder[b.category] || 99));
-
-  // Render items
-  items.forEach(item => {
-    const row = document.createElement('div');
-    row.className = 'cache-item-row';
-
-    let badgeHtml = '';
-    if (item.category === 'SAFE_TO_CLEAR') {
-      badgeHtml = `<span class="cache-badge cache-badge-safe">בטוח לניקוי</span>`;
-    } else if (item.category === 'NEEDS_CONFIRMATION') {
-      badgeHtml = `<span class="cache-badge cache-badge-caution">נדרש אישור</span>`;
-    } else {
-      badgeHtml = `<span class="cache-badge" style="background: rgba(156, 163, 175, 0.1); color: var(--text-secondary);">מוגן מערכת</span>`;
-    }
-
-    const isSystemProtected = item.category === 'SYSTEM_PROTECTED';
-    const actionIcon = isSystemProtected
-      ? `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`
-      : `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`;
-    
-    const buttonTitle = isSystemProtected
-      ? 'תיקייה זו מוגנת על ידי המערכת ולא ניתן לנקות אותה'
-      : `נקה את ${item.name}`;
-
-    row.innerHTML = `
-      <div class="cache-item-info">
-        <div class="cache-item-header">
-          <strong class="cache-item-name">${escapeHtml(item.name)}</strong>
-          ${badgeHtml}
-        </div>
-        <span class="cache-item-desc">${escapeHtml(item.description || '')}</span>
-        <code dir="ltr" class="cache-item-path" title="${escapeHtml(item.path)}">${escapeHtml(item.path)}</code>
-      </div>
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <strong style="font-size: 0.850rem; white-space: nowrap;">${formatCacheBytes(item.bytes)}</strong>
-      </div>
-    `;
-
-    const actionButton = document.createElement('button');
-    actionButton.className = 'btn-trash-action';
-    actionButton.title = buttonTitle;
-    actionButton.setAttribute('aria-label', buttonTitle);
-    if (isSystemProtected) {
-      actionButton.disabled = true;
-    }
-    actionButton.innerHTML = actionIcon;
-
-    if (!isSystemProtected) {
-      actionButton.addEventListener('click', () => {
-        openCacheConfirmModal(item);
-      });
-    }
-
-    row.querySelector('div:last-child').appendChild(actionButton);
-    elements.cacheFindings.appendChild(row);
-  });
 }
 
 async function renderWarningBanner(usage) {
@@ -2328,7 +2267,7 @@ async function suspendSystemProcess(pid) {
     const res = await fetch('/api/system/suspend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pid })
+      body: JSON.stringify({ pid, confirm: true })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'שגיאה בהשהיית התהליך');

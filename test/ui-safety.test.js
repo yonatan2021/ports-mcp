@@ -229,13 +229,16 @@ test('UI supports interactive cache deletion, safety badge, and confirm modal lo
   assert.match(appJs, /fetch\(['"]\/api\/system\/cache\/trash['"]/);
   assert.match(appJs, /function formatCacheBytes/);
   assert.match(appJs, /function openCacheConfirmModal/);
-  assert.match(appJs, /cache-badge-safe/);
-  assert.match(appJs, /cache-badge-caution/);
-  assert.match(appJs, /btn-trash-action/);
+  // Badge classes are defined in CSS; the live rendering goes through renderCacheGroup → getCacheCategoryCopy
+  assert.match(styleCss, /cache-badge-safe/);
+  assert.match(styleCss, /cache-badge-caution/);
+  // Live rendering uses btn-trash-action class via createCacheItemCard
+  assert.match(styleCss, /btn-trash-action/);
   assert.match(appJs, /'confirm-help'/);
   assert.match(appJs, /\.style\.display = 'none'/);
   assert.match(appJs, /\.style\.display = 'block'/);
 });
+
 
 test('cache cleaner groups items in collapsed, accessible safety categories', () => {
   assert.match(indexHtml, /id="cache-groups"/);
@@ -291,4 +294,25 @@ test('compact grouped-list styles keep rows scannable and responsive', () => {
   assert.match(styleCss, /\.simple-port-section-toggle:focus-visible/);
   assert.match(styleCss, /\.simple-port-row-actions > \* \{ min-height: 44px;/);
   assert.match(styleCss, /@media \(max-width: 760px\)/);
+});
+
+test('suspendSystemProcess sends confirm:true so the suspend actually executes', () => {
+  // Extract the suspendSystemProcess function body from app.js
+  const match = appJs.match(/async function suspendSystemProcess\(pid\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(match, 'suspendSystemProcess function not found');
+  const fnBody = match[1];
+  // Must include confirm: true in the fetch body
+  assert.match(fnBody, /confirm:\s*true/, 'suspendSystemProcess must send confirm: true — without it the backend returns dryRun: true and the process is never suspended');
+  // Must NOT send just { pid } without confirm
+  assert.doesNotMatch(fnBody, /JSON\.stringify\(\s*\{\s*pid\s*\}\s*\)/, 'suspendSystemProcess must not send a body that only contains pid (missing confirm: true)');
+});
+
+test('filterAndRenderCache has no dead code after its rendering path', () => {
+  // The function should not contain an unconditional `return;` followed by more logic
+  // (regression test for the dead old flat-row renderer that was left behind)
+  const match = appJs.match(/function filterAndRenderCache\(\)([\s\S]*?)\n\}\n\nasync function renderWarningBanner/);
+  assert.ok(match, 'filterAndRenderCache function boundary not found');
+  const fnBody = match[1];
+  // The body must NOT contain a bare `return;` followed by sort/render code
+  assert.doesNotMatch(fnBody, /return;\s*\n\s*\/\/ Sort:/, 'filterAndRenderCache must not have dead code after an unconditional return');
 });
