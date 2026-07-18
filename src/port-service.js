@@ -223,18 +223,22 @@ function createPortService(options = {}) {
     if (options.listPorts) {
       ports = await options.listPorts();
     } else {
-      const { stdout } = await runner.execFile('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n'], { allowNonZero: true });
-      const rawPorts = parseLsofOutput(stdout);
-      const uniquePids = [...new Set(rawPorts.map(p => p.pid))];
-      const [commandMap, workingDirectoryMap] = await Promise.all([
-        getProcessCommands(uniquePids),
-        getProcessWorkingDirectories(uniquePids),
-      ]);
-      ports = rawPorts.map(p => ({
-        ...p,
-        commandLine: commandMap[p.pid] || 'Unknown command',
-        workingDirectory: workingDirectoryMap[p.pid] || null,
-      }));
+      try {
+        const { stdout } = await runner.execFile('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n'], { allowNonZero: true });
+        const rawPorts = parseLsofOutput(stdout);
+        const uniquePids = [...new Set(rawPorts.map(p => p.pid))];
+        const [commandMap, workingDirectoryMap] = await Promise.all([
+          getProcessCommands(uniquePids),
+          getProcessWorkingDirectories(uniquePids),
+        ]);
+        ports = rawPorts.map(p => ({
+          ...p,
+          commandLine: commandMap[p.pid] || 'Unknown command',
+          workingDirectory: workingDirectoryMap[p.pid] || null,
+        }));
+      } catch {
+        ports = [];
+      }
     }
 
     let results = ports.map(p => {
