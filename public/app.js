@@ -18,6 +18,8 @@ let appUpdateSupported = false;
 let activeCacheFilter = 'all'; // 'all', 'SAFE_TO_CLEAR', 'NEEDS_CONFIRMATION', 'SYSTEM_PROTECTED'
 let cacheSizeFilterVal = 'all'; // 'all', '100mb', '1gb'
 let cacheSearchQuery = '';
+let safeCleanWizardStep = 1;
+let safeCleanWizardReturnFocus = null;
 const POLL_INTERVAL = 8000; // 8 seconds
 const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
 
@@ -333,6 +335,17 @@ const elements = {
 
   cacheFindings: document.getElementById('cache-findings'),
   storageRefreshBtn: document.getElementById('storage-refresh-btn'),
+  cacheGroups: document.getElementById('cache-groups'),
+  cacheSummarySafeSize: document.getElementById('cache-summary-safe-size'),
+  cacheSummaryTotalSize: document.getElementById('cache-summary-total-size'),
+  safeCleanWizard: document.getElementById('safe-clean-wizard'),
+  safeCleanWizardProgress: document.getElementById('safe-clean-wizard-progress'),
+  safeCleanWizardDescription: document.getElementById('safe-clean-wizard-description'),
+  safeCleanWizardItems: document.getElementById('safe-clean-wizard-items'),
+  safeCleanWizardBack: document.getElementById('safe-clean-wizard-back'),
+  safeCleanWizardCancel: document.getElementById('safe-clean-wizard-cancel'),
+  safeCleanWizardNext: document.getElementById('safe-clean-wizard-next'),
+  safeCleanWizardClose: document.getElementById('safe-clean-wizard-close'),
   resultsCount: document.getElementById('results-count'),
   currentViewTitle: document.getElementById('current-view-title'),
 
@@ -732,24 +745,33 @@ function setupEventListeners() {
   // Quick Clean Cache button
   const quickCleanCacheBtn = document.getElementById('quick-clean-cache-btn');
   if (quickCleanCacheBtn) {
-    quickCleanCacheBtn.addEventListener('click', async () => {
-      const safeItems = cacheItemsData.filter(item => item.category === 'SAFE_TO_CLEAR');
-      if (safeItems.length === 0) return;
-
-      const confirmMessage = `האם אתה בטוח שברצונך להעביר את כל (${safeItems.length}) תיקיות ה-Cache הבטוחות לניקוי לפח האשפה?\n` +
-        safeItems.map(item => `- ${item.name} (${formatCacheBytes(item.bytes)})`).join('\n');
-
-      if (confirm(confirmMessage)) {
-        quickCleanCacheBtn.disabled = true;
-        const paths = safeItems.map(item => item.path);
-        const success = await executeTrashCachesBatch(paths);
-        quickCleanCacheBtn.disabled = false;
-        if (success) {
-          updateStorageUsage();
-        }
-      }
-    });
+    quickCleanCacheBtn.addEventListener('click', openSafeCleanWizard);
   }
+
+  elements.safeCleanWizardClose?.addEventListener('click', closeSafeCleanWizard);
+  elements.safeCleanWizardCancel?.addEventListener('click', closeSafeCleanWizard);
+  elements.safeCleanWizardBack?.addEventListener('click', () => {
+    if (safeCleanWizardStep > 1) {
+      safeCleanWizardStep -= 1;
+      renderSafeCleanWizardStep();
+    }
+  });
+  elements.safeCleanWizardNext?.addEventListener('click', async () => {
+    if (safeCleanWizardStep < 3) {
+      safeCleanWizardStep += 1;
+      renderSafeCleanWizardStep();
+      return;
+    }
+    await confirmSafeCleanWizard();
+  });
+  elements.safeCleanWizard?.addEventListener('click', (event) => {
+    if (event.target === elements.safeCleanWizard) closeSafeCleanWizard();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !elements.safeCleanWizard?.classList.contains('hidden')) {
+      closeSafeCleanWizard();
+    }
+  });
 
   // Info Hub Modal
   if (elements.infoTriggerBtn) {
@@ -1756,6 +1778,57 @@ async function executeTrashCachesBatch(paths) {
   }
 }
 
+function openSafeCleanWizard() {
+  if (!getSafeCacheItems(cacheItemsData).length) return;
+  safeCleanWizardReturnFocus = document.activeElement;
+  safeCleanWizardStep = 1;
+  renderSafeCleanWizardStep();
+  elements.safeCleanWizard.classList.remove('hidden');
+  elements.safeCleanWizardClose.focus();
+}
+
+function closeSafeCleanWizard() {
+  if (!elements.safeCleanWizard || elements.safeCleanWizard.classList.contains('hidden')) return;
+  elements.safeCleanWizard.classList.add('hidden');
+  safeCleanWizardReturnFocus?.focus();
+}
+
+function renderSafeCleanWizardStep() {
+  const safeItems = getSafeCacheItems(cacheItemsData);
+  const totalBytes = safeItems.reduce((sum, item) => sum + (item.bytes || 0), 0);
+  const stepContent = {
+    1: { description: '<p>ננקה רק קבצים שהמערכת סימנה מראש כבטוחים. אפליקציות עשויות ליצור אותם מחדש בפעם הבאה שיפעלו.</p>', next: 'לרשימת הפריטים' },
+    2: { description: `<p>אלה ${safeItems.length} הפריטים שייכללו בניקוי הבטוח, בהיקף כולל של <strong>${formatCacheBytes(totalBytes)}</strong>.</p>`, next: 'להמשך לאישור' },
+    3: { description: '<p><strong>הפריטים יועברו לפח האשפה ולא יימחקו לצמיתות.</strong> אפשר לשחזר אותם מהפח אם צריך.</p>', next: 'העבר לפח האשפה' }
+  }[safeCleanWizardStep];
+  elements.safeCleanWizardProgress.textContent = `שלב ${safeCleanWizardStep} מתוך 3`;
+  elements.safeCleanWizardDescription.innerHTML = stepContent.description;
+  elements.safeCleanWizardItems.replaceChildren();
+  if (safeCleanWizardStep >= 2) {
+    safeItems.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'safe-clean-wizard-item';
+      row.innerHTML = `<span>${escapeHtml(item.name)}</span><strong>${formatCacheBytes(item.bytes)}</strong>`;
+      elements.safeCleanWizardItems.appendChild(row);
+    });
+  }
+  elements.safeCleanWizardBack.classList.toggle('hidden', safeCleanWizardStep === 1);
+  elements.safeCleanWizardNext.textContent = stepContent.next;
+  elements.safeCleanWizardNext.className = safeCleanWizardStep === 3 ? 'btn btn-danger' : 'btn btn-primary';
+}
+
+async function confirmSafeCleanWizard() {
+  const paths = getSafeCacheItems(cacheItemsData).map(item => item.path);
+  if (!paths.length) return;
+  elements.safeCleanWizardNext.disabled = true;
+  const success = await executeTrashCachesBatch(paths);
+  elements.safeCleanWizardNext.disabled = false;
+  if (success) {
+    closeSafeCleanWizard();
+    await updateStorageUsage();
+  }
+}
+
 function openCacheConfirmModal(cacheItem) {
   stopPolling();
   
@@ -1905,6 +1978,64 @@ async function updateStorageUsage() {
   }
 }
 
+function getSafeCacheItems(items) {
+  return (items || []).filter(item => item.category === 'SAFE_TO_CLEAR');
+}
+
+function getCacheCategoryCopy(category) {
+  return {
+    SAFE_TO_CLEAR: { title: 'מומלץ לניקוי', hint: 'קבצים זמניים שאפשר ליצור מחדש', safety: 'נכלל בניקוי הבטוח' },
+    NEEDS_CONFIRMATION: { title: 'כדאי לבדוק לפני ניקוי', hint: 'ייתכן שאפליקציה תצטרך ליצור אותם מחדש', safety: 'לא נכלל בניקוי הבטוח' },
+    SYSTEM_PROTECTED: { title: 'מוגן ולא ניתן לניקוי', hint: 'המערכת מגינה על פריטים אלה', safety: 'הפריט מוגן ולא ניתן לניקוי' }
+  }[category];
+}
+
+function createCacheItemCard(item) {
+  const isProtected = item.category === 'SYSTEM_PROTECTED';
+  const copy = getCacheCategoryCopy(item.category);
+  const card = document.createElement('article');
+  card.className = 'cache-item-card';
+  card.innerHTML = `
+    <div>
+      <h4>${escapeHtml(item.name)}</h4>
+      <p>${escapeHtml(item.description || copy.hint)}</p>
+      <p class="cache-item-safety">${copy.safety}</p>
+      <details class="cache-item-details"><summary>פרטים טכניים</summary><code>${escapeHtml(item.path)}</code></details>
+    </div>
+    <div>
+      <strong>${formatCacheBytes(item.bytes)}</strong>
+      <button class="btn ${isProtected ? 'btn-secondary' : 'btn-danger'} cache-item-action" type="button" ${isProtected ? 'disabled' : ''}>${isProtected ? 'מוגן' : 'העבר לפח'}</button>
+    </div>`;
+  if (!isProtected) {
+    card.querySelector('button').addEventListener('click', () => openCacheConfirmModal(item));
+  }
+  return card;
+}
+
+function renderCacheGroup(category, items) {
+  const copy = getCacheCategoryCopy(category);
+  const totalBytes = items.reduce((sum, item) => sum + (item.bytes || 0), 0);
+  const panelId = `cache-group-${category.toLowerCase()}`;
+  const group = document.createElement('section');
+  group.className = 'cache-group glass';
+  group.dataset.cacheCategory = category;
+  group.innerHTML = `
+    <button class="cache-group-trigger" type="button" aria-expanded="false" aria-controls="${panelId}">
+      <span><strong>${copy.title}</strong><small>${copy.hint}</small></span>
+      <span class="cache-group-trigger-meta">${items.length} פריטים · ${formatCacheBytes(totalBytes)} <span class="cache-group-chevron" aria-hidden="true">⌄</span></span>
+    </button>
+    <div id="${panelId}" class="cache-group-panel" hidden></div>`;
+  const trigger = group.querySelector('.cache-group-trigger');
+  const panel = group.querySelector('.cache-group-panel');
+  trigger.addEventListener('click', () => {
+    const expanded = trigger.getAttribute('aria-expanded') === 'true';
+    trigger.setAttribute('aria-expanded', String(!expanded));
+    panel.hidden = expanded;
+  });
+  items.forEach(item => panel.appendChild(createCacheItemCard(item)));
+  return group;
+}
+
 function filterAndRenderCache() {
   let items = cacheItemsData || [];
 
@@ -1934,8 +2065,7 @@ function filterAndRenderCache() {
     elements.cacheResultsCount.textContent = `נמצאו ${items.length} תיקיות (${formatCacheBytes(totalFilteredBytes)})`;
   }
 
-  // Clear findings container
-  elements.cacheFindings.replaceChildren();
+  elements.cacheGroups.replaceChildren();
 
   if (items.length === 0) {
     if (elements.cacheEmptyState) elements.cacheEmptyState.classList.remove('hidden');
@@ -1956,6 +2086,16 @@ function filterAndRenderCache() {
       quickCleanBtn.classList.add('hidden');
     }
   }
+
+  const safeItems = getSafeCacheItems(cacheItemsData);
+  const scannedBytes = cacheItemsData.reduce((sum, item) => sum + (item.bytes || 0), 0);
+  const safeBytes = safeItems.reduce((sum, item) => sum + (item.bytes || 0), 0);
+  if (elements.cacheSummarySafeSize) elements.cacheSummarySafeSize.textContent = formatCacheBytes(safeBytes);
+  if (elements.cacheSummaryTotalSize) elements.cacheSummaryTotalSize.textContent = `${cacheItemsData.length} פריטים · ${formatCacheBytes(scannedBytes)}`;
+  ['SAFE_TO_CLEAR', 'NEEDS_CONFIRMATION', 'SYSTEM_PROTECTED'].forEach(category => {
+    elements.cacheGroups.appendChild(renderCacheGroup(category, items.filter(item => item.category === category)));
+  });
+  return;
 
   // Sort: category order
   const categoryOrder = { SAFE_TO_CLEAR: 1, NEEDS_CONFIRMATION: 2, SYSTEM_PROTECTED: 3 };

@@ -226,67 +226,43 @@
 
         <!-- Cache View (Tab Page 2) -->
         <div id="view-cache" class="tab-view hidden">
-          <!-- Controls Panel for Cache -->
-          <section class="controls-panel glass cache-controls">
-            <div class="workspace-intro">
-              <div>
-                <p class="eyebrow">קבצים זמניים ומטמון</p>
-                <h2 id="storage-title">ניהול וניקוי קבצי Cache</h2>
-              </div>
-              <p id="cache-results-count" class="results-count" aria-live="polite">טוען נתונים…</p>
+          <section class="cache-summary glass" aria-labelledby="cache-summary-title">
+            <div class="cache-summary-copy">
+              <p class="eyebrow">ניקוי בטוח של קבצים זמניים</p>
+              <h2 id="cache-summary-title">אפשר לפנות מקום בלי לגעת בקבצים האישיים שלך</h2>
+              <p>Cache הוא מידע זמני שאפליקציות יכולות ליצור מחדש. הניקוי מעביר פריטים לפח האשפה ולא מוחק אותם לצמיתות.</p>
             </div>
-            
-            <div class="search-wrapper">
-              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input type="text" id="cache-search-input" placeholder="חיפוש לפי שם אפליקציה או נתיב Cache…" autocomplete="off" aria-label="חיפוש לפי שם אפליקציה או נתיב Cache">
+            <div class="cache-summary-metrics" aria-live="polite">
+              <span>בטוח לניקוי <strong id="cache-summary-safe-size">—</strong></span>
+              <span>נסרקו <strong id="cache-summary-total-size">—</strong></span>
             </div>
-
-            <div class="filter-group-row" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; width: 100%;">
-              <!-- Safety Filter Tabs -->
-              <div class="filter-tabs cache-filter-tabs" role="radiogroup" aria-label="סינון לפי בטיחות">
-                <button class="cache-filter-tab active" data-filter="all">הכול</button>
-                <button class="cache-filter-tab" data-filter="SAFE_TO_CLEAR">בטוח לניקוי</button>
-                <button class="cache-filter-tab" data-filter="NEEDS_CONFIRMATION">נדרש אישור</button>
-                <button class="cache-filter-tab" data-filter="SYSTEM_PROTECTED">מוגן מערכת</button>
-              </div>
-
-              <!-- Size Filter Select -->
-              <div class="size-filter-wrapper" style="margin-right: auto; min-width: 140px;">
-                <select id="cache-size-filter" class="select-filter" aria-label="סינון לפי גודל">
-                  <option value="all">כל הגדלים</option>
-                  <option value="100mb">מעל 100 MB</option>
-                  <option value="1gb">מעל 1 GB</option>
-                </select>
-              </div>
+            <div class="cache-summary-actions">
+              <button id="quick-clean-cache-btn" class="btn btn-success hidden" type="button">ניקוי בטוח</button>
+              <button id="storage-refresh-btn" class="btn btn-secondary" type="button">סריקה מחדש</button>
             </div>
           </section>
 
-          <!-- Cache findings container -->
-          <main class="ports-container glass cache-container" style="margin-top: 0;">
-            <div class="cache-findings-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-glass); flex-wrap: wrap; gap: 8px;">
-              <h3 style="font-size: var(--font-size-lg); color: var(--text-primary); margin: 0;">תיקיות Cache שנסרקו במערכת</h3>
-              <div style="display: flex; gap: 8px;">
-                <button id="quick-clean-cache-btn" class="btn btn-success btn-sm hidden" type="button" style="display: inline-flex; align-items: center; gap: 4px;">
-                  <svg class="icon-svg" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                  ניקוי מהיר
-                </button>
-                <button id="storage-refresh-btn" class="btn btn-secondary btn-sm" type="button">סריקה מחדש</button>
-              </div>
+          <section class="cache-explainer glass" aria-labelledby="cache-explainer-title">
+            <h3 id="cache-explainer-title">איך יודעים מה בטוח?</h3>
+            <p>המערכת מסווגת כל תיקייה לפני ההצגה. הניקוי המהיר כולל רק פריטים שסומנו מראש כבטוחים; פריטים אחרים דורשים בדיקה או נשארים מוגנים.</p>
+          </section>
+
+          <section class="cache-controls glass" aria-label="חיפוש וסינון תיקיות Cache">
+            <div class="search-wrapper">
+              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="cache-search-input" placeholder="חיפוש אפליקציה או נתיב…" autocomplete="off" aria-label="חיפוש אפליקציה או נתיב Cache">
             </div>
-            <div id="cache-findings" class="storage-findings-grid" aria-live="polite">
-              <!-- Cache folders will be dynamically rendered here -->
-            </div>
-            
-            <!-- Empty State for Cache -->
-            <div id="cache-empty-state" class="empty-state hidden">
-              <div class="empty-icon">🧹</div>
-              <h3>לא נמצאו תיקיות Cache מתאימות</h3>
-              <p>נסה לנקות את תיבת החיפוש או לשנות מסננים.</p>
-            </div>
-          </main>
+            <label class="cache-size-filter-label">גודל
+              <select id="cache-size-filter" class="select-filter" aria-label="סינון לפי גודל">
+                <option value="all">כל הגדלים</option><option value="100mb">מעל 100 MB</option><option value="1gb">מעל 1 GB</option>
+              </select>
+            </label>
+            <p id="cache-results-count" class="results-count" aria-live="polite"></p>
+          </section>
+
+          <main id="cache-groups" class="cache-groups" aria-live="polite"></main>
+          <div id="cache-findings" class="hidden" aria-hidden="true"></div>
+          <div id="cache-empty-state" class="empty-state hidden"><div class="empty-icon">🧹</div><h3>לא נמצאו תיקיות מתאימות</h3><p>נסה לשנות את החיפוש או את סינון הגודל.</p></div>
         </div>
       </div>
     </div>
@@ -429,7 +405,23 @@
     </div>
   </aside>
 
-  <!-- Confirmation Modal -->
+    <!-- Safe Cache Cleanup Wizard -->
+    <section id="safe-clean-wizard" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="safe-clean-wizard-title" aria-describedby="safe-clean-wizard-description">
+      <div class="safe-clean-dialog glass">
+        <button id="safe-clean-wizard-close" class="btn-close-modal" type="button" aria-label="סגור ניקוי בטוח">&times;</button>
+        <p id="safe-clean-wizard-progress" class="wizard-progress">שלב 1 מתוך 3</p>
+        <h2 id="safe-clean-wizard-title">ניקוי בטוח</h2>
+        <div id="safe-clean-wizard-description"></div>
+        <div id="safe-clean-wizard-items" class="safe-clean-wizard-items"></div>
+        <div class="wizard-actions">
+          <button id="safe-clean-wizard-back" class="btn btn-secondary" type="button">חזרה</button>
+          <button id="safe-clean-wizard-cancel" class="btn btn-secondary" type="button">ביטול</button>
+          <button id="safe-clean-wizard-next" class="btn btn-primary" type="button">המשך</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Confirmation Modal -->
   <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc modal-warning confirm-help">
     <div class="modal-card glass">
       <div class="modal-header">

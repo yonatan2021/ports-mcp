@@ -233,4 +233,20 @@ test('UI supports interactive cache deletion, safety badge, and confirm modal lo
   assert.match(appJs, /\.style\.display = 'block'/);
 });
 
+test('cache cleaner groups items in collapsed, accessible safety categories', () => {
+  assert.match(indexHtml, /id="cache-groups"/);
+  assert.match(appJs, /SAFE_TO_CLEAR/);
+  assert.match(appJs, /NEEDS_CONFIRMATION/);
+  assert.match(appJs, /SYSTEM_PROTECTED/);
+  assert.match(appJs, /function getSafeCacheItems/);
+  assert.match(appJs, /function renderCacheGroup/);
+  assert.match(appJs, /aria-expanded/);
+});
 
+test('safe cleanup wizard reviews only backend-safe cache items', () => {
+  assert.match(indexHtml, /id="safe-clean-wizard"/);
+  assert.match(indexHtml, /role="dialog"/);
+  assert.match(indexHtml, /aria-modal="true"/);
+  assert.match(appJs, /getSafeCacheItems\(cacheItemsData\)/);
+  assert.match(appJs, /הפריטים יועברו לפח האשפה/);
+});
