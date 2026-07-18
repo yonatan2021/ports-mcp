@@ -2895,11 +2895,31 @@ body.view-simple .simple-port-section-title {
   font-weight: 720;
 }
 
-body.view-simple .simple-port-section-count,
-body.view-simple .simple-port-section-metrics {
+body.view-simple .simple-port-section-count {
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   white-space: nowrap;
+}
+
+body.view-simple .simple-port-section-metrics {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+body.view-simple .section-metric-cpu {
+  color: var(--color-primary);
+}
+
+body.view-simple .section-metric-mem {
+  color: var(--color-success);
+}
+
+body.view-simple .section-metric-sep {
+  color: var(--text-muted);
 }
 
 body.view-simple .simple-port-section-chevron {
@@ -2979,6 +2999,16 @@ body.view-simple .simple-port-meta-item {
   font-size: var(--font-size-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+body.view-simple .simple-port-meta-item.metric-cpu {
+  color: var(--color-primary);
+  opacity: 0.9;
+}
+
+body.view-simple .simple-port-meta-item.metric-memory {
+  color: var(--color-success);
+  opacity: 0.9;
 }
 
 body.view-simple .simple-port-port {
@@ -3123,6 +3153,9 @@ body.view-simple .simple-port-row.is-system .simple-port-row-icon {
 .cache-group-trigger:focus-visible, .cache-item-details summary:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; border-radius: var(--radius-sm); }
 .cache-group-panel { display: grid; gap: .65rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-glass); }
 .cache-group-panel[hidden] { display: none; }
+.cache-protected-subgroup { display: grid; gap: .65rem; padding: .85rem; border: 1px solid var(--border-glass); border-radius: var(--radius-sm); background: rgba(255,255,255,.02); }
+.cache-protected-subgroup h4 { font-size: var(--font-size-base); }
+.cache-protected-subgroup > p { color: var(--text-secondary); font-size: var(--font-size-sm); }
 .cache-item-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem; padding: 1rem; background: rgba(0,0,0,.14); border: 1px solid var(--border-glass); border-radius: var(--radius-sm); }
 .cache-item-card h4 { font-size: var(--font-size-base); }
 .cache-item-card p { color: var(--text-secondary); font-size: var(--font-size-sm); margin-top: .25rem; }
@@ -3724,4 +3757,3 @@ body.view-simple .simple-port-row.is-system .simple-port-row-icon {
 .tooltip:hover::after {
   opacity: 1;
 }
-

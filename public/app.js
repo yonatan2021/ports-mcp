@@ -22,6 +22,11 @@ let safeCleanWizardStep = 1;
 let safeCleanWizardReturnFocus = null;
 const POLL_INTERVAL = 8000; // 8 seconds
 const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
+const STORAGE_CACHE_KEY = 'ports-mcp-storage-cache-v1';
+const STORAGE_CACHE_TTL_MS = 300_000;
+const UPDATE_CACHE_KEY = 'ports-mcp-app-update-cache-v1';
+const UPDATE_CACHE_TTL_MS = 86_400_000;
+const persistentCache = window.PersistentCache.createPersistentCache();
 
 // Self Port detection based on the loaded URL
 const selfPort = parseInt(window.location.port, 10) || 9999;
@@ -454,26 +459,40 @@ async function fetchAppInfo() {
     elements.copyrightYear.textContent = String(new Date().getFullYear());
   }
 
+  const cachedInfo = persistentCache.read(UPDATE_CACHE_KEY, UPDATE_CACHE_TTL_MS);
+  if (cachedInfo) {
+    renderAppInfo(cachedInfo);
+    return;
+  }
+
+  const staleInfo = persistentCache.read(UPDATE_CACHE_KEY, Infinity);
+  if (staleInfo) renderAppInfo(staleInfo);
+
   try {
     const response = await fetch('/api/app-info');
     if (!response.ok) throw new Error('App info unavailable');
     const info = await response.json();
-    elements.currentVersion.textContent = info.currentVersion || '-';
-    appUpdateReleaseUrl = typeof info.releaseUrl === 'string' ? info.releaseUrl : null;
-    appUpdateSupported = info.updateSupported === true && typeof window.portManager?.applyUpdate === 'function';
-
-    if (info.updateAvailable) {
-      elements.updateStatus.textContent = `עדכון זמין: גרסה ${info.latestVersion}`;
-      elements.updateStatus.classList.add('available');
-      elements.updateButton.textContent = appUpdateSupported ? 'עדכן עכשיו' : 'פתח דף הורדה';
-      elements.updateButton.classList.remove('hidden');
-      return;
-    }
-
-    elements.updateStatus.textContent = info.latestVersion ? 'הגרסה מעודכנת' : 'לא ניתן לבדוק עדכונים כרגע';
+    persistentCache.write(UPDATE_CACHE_KEY, info);
+    renderAppInfo(info);
   } catch (_error) {
     elements.updateStatus.textContent = 'לא ניתן לבדוק עדכונים כרגע';
   }
+}
+
+function renderAppInfo(info) {
+  elements.currentVersion.textContent = info.currentVersion || '-';
+  appUpdateReleaseUrl = typeof info.releaseUrl === 'string' ? info.releaseUrl : null;
+  appUpdateSupported = info.updateSupported === true && typeof window.portManager?.applyUpdate === 'function';
+
+  if (info.updateAvailable) {
+    elements.updateStatus.textContent = `עדכון זמין: גרסה ${info.latestVersion}`;
+    elements.updateStatus.classList.add('available');
+    elements.updateButton.textContent = appUpdateSupported ? 'עדכן עכשיו' : 'פתח דף הורדה';
+    elements.updateButton.classList.remove('hidden');
+    return;
+  }
+
+  elements.updateStatus.textContent = info.latestVersion ? 'הגרסה מעודכנת' : 'לא ניתן לבדוק עדכונים כרגע';
 }
 
 async function applyAppUpdate() {
@@ -621,7 +640,7 @@ function setupEventListeners() {
     fetchPorts();
     updateStorageUsage();
   });
-  elements.storageRefreshBtn.addEventListener('click', updateStorageUsage);
+  elements.storageRefreshBtn.addEventListener('click', () => updateStorageUsage({ force: true }));
 
   // Sidebar Tabs
   if (elements.tabBtnPorts) {
@@ -1682,6 +1701,7 @@ function updateProgressRing(circleElement, percentage) {
 }
 
 async function updateSystemUsage() {
+  updateDiskUsage();
   try {
     const res = await fetch('/api/system/usage');
     if (!res.ok) return;
@@ -1720,6 +1740,28 @@ async function updateSystemUsage() {
     }
   } catch (err) {
     console.error('Failed to update system metrics:', err);
+  }
+}
+
+function renderDiskUsage(disk) {
+  if (elements.statusTextDisk) {
+    elements.statusTextDisk.textContent = `${disk.percentage}% בשימוש`;
+  }
+  if (elements.metricDiskUsage) {
+    elements.metricDiskUsage.textContent = `${disk.percentage}% בשימוש`;
+  }
+  if (elements.metricDiskDetail) {
+    elements.metricDiskDetail.textContent = `${formatBytes(disk.availableBytes)} פנויים מתוך ${formatBytes(disk.totalBytes)}`;
+  }
+}
+
+async function updateDiskUsage() {
+  try {
+    const response = await fetch('/api/system/disk');
+    if (!response.ok) return;
+    renderDiskUsage(await response.json());
+  } catch (err) {
+    console.warn('Failed to update disk metric:', err);
   }
 }
 
@@ -1879,7 +1921,16 @@ function openCacheConfirmModal(cacheItem) {
   elements.confirmModal.classList.remove('hidden');
 }
 
-async function updateStorageUsage() {
+async function updateStorageUsage({ force = false } = {}) {
+  const cachedUsage = force ? null : persistentCache.read(STORAGE_CACHE_KEY, STORAGE_CACHE_TTL_MS);
+  if (cachedUsage) {
+    renderStorageUsage(cachedUsage);
+    return;
+  }
+
+  const staleUsage = force ? null : persistentCache.read(STORAGE_CACHE_KEY, Infinity);
+  if (staleUsage) renderStorageUsage(staleUsage);
+
   elements.storageRefreshBtn.disabled = true;
   
   // Show skeleton loader
@@ -1925,57 +1976,50 @@ async function updateStorageUsage() {
   `;
 
   try {
-    const storageRes = await fetch('/api/system/storage');
-    if (!storageRes.ok) throw new Error('Storage metrics unavailable');
-    const { disk } = await storageRes.json();
-
-    if (elements.statusTextDisk) {
-      elements.statusTextDisk.textContent = `${formatBytes(disk.availableBytes)}`;
-    }
-
-    // Keep compatibility
-    if (elements.metricDiskUsage) {
-      elements.metricDiskUsage.textContent = `${disk.percentage}% בשימוש`;
-    }
-    if (elements.metricDiskDetail) {
-      elements.metricDiskDetail.textContent = `${formatBytes(disk.availableBytes)} פנויים מתוך ${formatBytes(disk.totalBytes)}`;
-    }
-
-    const cacheRes = await fetch('/api/system/cache');
-    if (!cacheRes.ok) throw new Error('Cache metrics unavailable');
-    const { items: cacheItems } = await cacheRes.json();
-
-    cacheItemsData = cacheItems;
-
-    const totalBytes = cacheItems.reduce((acc, item) => acc + (item.bytes || 0), 0);
-    const scannedItems = cacheItems.length;
-
-    // Update new elements
-    if (elements.tabBadgeCache) {
-      const sizeText = formatCacheBytes(totalBytes);
-      elements.tabBadgeCache.textContent = sizeText;
-      if (totalBytes > 0) {
-        elements.tabBadgeCache.classList.remove('hidden');
-      } else {
-        elements.tabBadgeCache.classList.add('hidden');
-      }
-    }
-
-    if (elements.metricCacheUsage) {
-      elements.metricCacheUsage.textContent = formatCacheBytes(totalBytes);
-    }
-    if (elements.metricCacheDetail) {
-      elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות, ללא מחיקה אוטומטית`;
-    }
-    
-    filterAndRenderCache();
-
+    const [diskRes, cacheRes] = await Promise.all([
+      fetch('/api/system/disk'),
+      fetch('/api/system/cache'),
+    ]);
+    if (!diskRes.ok || !cacheRes.ok) throw new Error('Storage metrics unavailable');
+    const [disk, { items }] = await Promise.all([diskRes.json(), cacheRes.json()]);
+    const usage = { disk, items };
+    persistentCache.write(STORAGE_CACHE_KEY, usage);
+    renderStorageUsage(usage);
+    renderDiskUsage(disk);
   } catch (err) {
     console.warn('Failed to update storage/cache metrics:', err);
-    elements.cacheFindings.textContent = 'לא ניתן לסרוק Cache כרגע.';
+    if (!staleUsage) elements.cacheFindings.textContent = 'לא ניתן לסרוק Cache כרגע.';
   } finally {
     elements.storageRefreshBtn.disabled = false;
   }
+}
+
+function renderStorageUsage({ disk, items: cacheItems }) {
+  renderDiskUsage(disk);
+  cacheItemsData = cacheItems;
+
+  const totalBytes = cacheItems.reduce((acc, item) => acc + (item.bytes || 0), 0);
+  const scannedItems = cacheItems.length;
+
+  // Update new elements
+  if (elements.tabBadgeCache) {
+    const sizeText = formatCacheBytes(totalBytes);
+    elements.tabBadgeCache.textContent = sizeText;
+    if (totalBytes > 0) {
+      elements.tabBadgeCache.classList.remove('hidden');
+    } else {
+      elements.tabBadgeCache.classList.add('hidden');
+    }
+  }
+
+  if (elements.metricCacheUsage) {
+    elements.metricCacheUsage.textContent = formatCacheBytes(totalBytes);
+  }
+  if (elements.metricCacheDetail) {
+    elements.metricCacheDetail.textContent = `${scannedItems} תיקיות Cache קריאות, ללא מחיקה אוטומטית`;
+  }
+
+  filterAndRenderCache();
 }
 
 function getSafeCacheItems(items) {
@@ -2004,12 +2048,28 @@ function createCacheItemCard(item) {
     </div>
     <div>
       <strong>${formatCacheBytes(item.bytes)}</strong>
-      <button class="btn ${isProtected ? 'btn-secondary' : 'btn-danger'} cache-item-action" type="button" ${isProtected ? 'disabled' : ''}>${isProtected ? 'מוגן' : 'העבר לפח'}</button>
+      ${isProtected
+        ? '<span class="cache-item-safety">מידע בלבד</span>'
+        : '<button class="btn btn-danger cache-item-action" type="button">העבר לפח</button>'}
     </div>`;
   if (!isProtected) {
     card.querySelector('button').addEventListener('click', () => openCacheConfirmModal(item));
   }
   return card;
+}
+
+const protectedCacheGroups = [
+  { id: 'apple-user', title: 'מטמוני Apple בחשבון המשתמש', hint: 'פריטי מטמון של Apple בחשבון המשתמש — מידע בלבד.' },
+  { id: 'shared-system', title: 'מטמוני מערכת משותפים', hint: 'מנוהל על ידי macOS ואינו זמין לניקוי.' },
+  { id: 'macos-system', title: 'מטמוני macOS מוגנים', hint: 'מנוהל על ידי macOS ואינו זמין לניקוי.' }
+];
+
+function renderProtectedCacheSubgroup(groupInfo, items) {
+  const subgroup = document.createElement('section');
+  subgroup.className = 'cache-protected-subgroup';
+  subgroup.innerHTML = `<h4>${escapeHtml(groupInfo.title)}</h4><p>${escapeHtml(groupInfo.hint)}</p>`;
+  items.forEach(item => subgroup.appendChild(createCacheItemCard(item)));
+  return subgroup;
 }
 
 function renderCacheGroup(category, items) {
@@ -2032,7 +2092,21 @@ function renderCacheGroup(category, items) {
     trigger.setAttribute('aria-expanded', String(!expanded));
     panel.hidden = expanded;
   });
-  items.forEach(item => panel.appendChild(createCacheItemCard(item)));
+  if (category === 'SYSTEM_PROTECTED') {
+    protectedCacheGroups.forEach(groupInfo => {
+      const groupItems = items.filter(item => item.protectedGroup === groupInfo.id);
+      if (groupItems.length) panel.appendChild(renderProtectedCacheSubgroup(groupInfo, groupItems));
+    });
+    const ungroupedItems = items.filter(item => !protectedCacheGroups.some(groupInfo => groupInfo.id === item.protectedGroup));
+    if (ungroupedItems.length) {
+      panel.appendChild(renderProtectedCacheSubgroup({
+        title: 'מטמונים מוגנים נוספים',
+        hint: 'מנוהל על ידי macOS ואינו זמין לניקוי.'
+      }, ungroupedItems));
+    }
+  } else {
+    items.forEach(item => panel.appendChild(createCacheItemCard(item)));
+  }
   return group;
 }
 
@@ -2366,9 +2440,12 @@ window.showToast = showToast;
 // --- UX REDESIGN SIMPLE VIEW IMPLEMENTATION ---
 
 function getSimpleResourceSummary(processes) {
-  const cpu = processes.reduce((sum, process) => sum + Number(process.cpu || 0), 0);
-  const memoryMb = processes.reduce((sum, process) => sum + Number(process.memoryMb || 0), 0);
-  return { cpu: cpu.toFixed(1), memoryMb: memoryMb.toFixed(1) };
+  const cpuTotal = processes.reduce((sum, process) => sum + Number(process.cpu || 0), 0);
+  const memTotal = processes.reduce((sum, process) => sum + Number(process.memoryMb || 0), 0);
+  return {
+    cpu: parseFloat(cpuTotal.toFixed(1)),
+    memoryMb: parseFloat(memTotal.toFixed(1))
+  };
 }
 
 function createSimplePortSection(category, createRow) {
@@ -2385,7 +2462,12 @@ function createSimplePortSection(category, createRow) {
       <span class="simple-port-section-summary">
         <span class="simple-port-section-title">${category.title}</span>
         <span class="simple-port-section-count">${category.ports.length} פעילים</span>
-        <span class="simple-port-section-metrics" dir="ltr">⚡ ${metrics.cpu}% · 💾 ${metrics.memoryMb} MB</span>
+        ${metrics.cpu > 0 || metrics.memoryMb > 0 ? `
+        <span class="simple-port-section-metrics" dir="ltr">
+          ${metrics.cpu > 0 ? `<span class="section-metric-cpu">⚡ ${metrics.cpu}%</span>` : ''}
+          ${metrics.cpu > 0 && metrics.memoryMb > 0 ? '<span class="section-metric-sep">·</span>' : ''}
+          ${metrics.memoryMb > 0 ? `<span class="section-metric-mem">💾 ${metrics.memoryMb} MB</span>` : ''}
+        </span>` : ''}
       </span>
       <svg class="simple-port-section-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="6 9 12 15 18 9"></polyline>
@@ -2475,8 +2557,8 @@ function createSimplePortRow(portObj) {
       ${safetyBadgeHtml}
       <span class="simple-port-meta-item" title="${escapeHtml(sourceInfo.path)}" ${hasSourcePath ? 'dir="ltr"' : ''}>📁 ${escapeHtml(sourceDisplay)}</span>
       <span class="simple-port-meta-item" dir="ltr">PID ${pidText}</span>
-      <span class="simple-port-meta-item" dir="ltr">⚡ ${cpu}%</span>
-      <span class="simple-port-meta-item" dir="ltr">💾 ${memoryMb} MB</span>
+      ${Number(cpu) > 0 ? `<span class="simple-port-meta-item metric-cpu" dir="ltr">⚡ ${cpu}%</span>` : ''}
+      ${Number(memoryMb) > 0 ? `<span class="simple-port-meta-item metric-memory" dir="ltr">💾 ${memoryMb} MB</span>` : ''}
     </div>
     <div class="simple-port-row-actions">
       ${openBrowserBtnHtml}
@@ -2516,8 +2598,8 @@ function createSimpleSystemProcessRow(process) {
     <div class="simple-port-row-meta">
       <span class="simple-port-safety ${process.isSuspended ? 'exposed' : 'safe'}">סטטוס: ${status}</span>
       <span class="simple-port-meta-item" dir="ltr">PID ${escapeHtml(String(process.pid))}</span>
-      <span class="simple-port-meta-item" dir="ltr">⚡ ${Number(process.cpu || 0).toFixed(1)}%</span>
-      <span class="simple-port-meta-item" dir="ltr">💾 ${Number(process.memoryMb || 0).toFixed(1)} MB</span>
+      ${Number(process.cpu || 0) > 0 ? `<span class="simple-port-meta-item metric-cpu" dir="ltr">⚡ ${Number(process.cpu || 0).toFixed(1)}%</span>` : ''}
+      ${Number(process.memoryMb || 0) > 0 ? `<span class="simple-port-meta-item metric-memory" dir="ltr">💾 ${Number(process.memoryMb || 0).toFixed(1)} MB</span>` : ''}
     </div>
     <div class="simple-port-row-actions">${actionHtml}</div>
   `;

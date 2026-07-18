@@ -43,6 +43,22 @@ test('GET /api/system/storage returns disk and cache usage', async () => {
   }
 });
 
+test('GET /api/system/disk returns the lightweight disk metric', async () => {
+  const expectedDisk = { percentage: 40, availableBytes: 600 };
+  const app = createApp({ service: { getDiskUsage: async () => expectedDisk } });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+
+  try {
+    const { port } = server.address();
+    const res = await fetch(`http://127.0.0.1:${port}/api/system/disk`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), expectedDisk);
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
 test('GET /api/system/processes returns processes list', async () => {
   const serviceMock = {
     getSystemProcesses: async () => [{ pid: 123, processName: 'node', cpu: 5.5, memoryMb: 128.0 }]

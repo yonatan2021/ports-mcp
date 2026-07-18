@@ -152,6 +152,14 @@ function createApp({
     }
   });
 
+  app.get('/api/system/disk', async (_req, res) => {
+    try {
+      res.json(await service.getDiskUsage());
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   app.get('/api/system/processes', async (_req, res) => {
     try {
       const processes = await service.getSystemProcesses();

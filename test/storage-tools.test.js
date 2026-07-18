@@ -7,6 +7,20 @@ const { createPortService } = require('../src/port-service');
 const { SafetyConfig } = require('../src/config');
 const { SafetyLayer } = require('../src/safety');
 
+test('getDiskUsage reads only df and returns disk capacity', async () => {
+  const runner = {
+    execFile: async (file, args) => {
+      assert.equal(file, 'df');
+      assert.deepEqual(args, ['-kP', '/']);
+      return { stdout: 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3 1000 400 600 40% /\n' };
+    }
+  };
+
+  const disk = await createPortService({ runner }).getDiskUsage();
+
+  assert.deepEqual(disk, { totalBytes: 1024000, usedBytes: 409600, availableBytes: 614400, percentage: 40 });
+});
+
 test('getStorageUsage reports disk capacity and largest readable cache folders', async () => {
   const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-mcp-storage-'));
   const homeDir = path.join(baseDir, 'home');
@@ -91,7 +105,8 @@ test('getCacheDetails categorizes folders and calculates sizes with mocked homeD
 
     const safariItem = details.find(i => i.name === 'com.apple.Safari');
     assert.ok(safariItem);
-    assert.equal(safariItem.category, 'NEEDS_CONFIRMATION');
+    assert.equal(safariItem.category, 'SYSTEM_PROTECTED');
+    assert.equal(safariItem.protectedGroup, 'apple-user');
     assert.ok(safariItem.bytes > 0);
 
     const yarnItem = details.find(i => i.name === 'Yarn Cache');
@@ -123,6 +138,43 @@ test('getCacheDetails categorizes folders and calculates sizes with mocked homeD
     assert.ok(cocoapodsItem);
     assert.equal(cocoapodsItem.category, 'SAFE_TO_CLEAR');
     assert.ok(cocoapodsItem.bytes > 0);
+  } finally {
+    await fs.rm(baseDir, { recursive: true, force: true });
+  }
+});
+
+test('getCacheDetails exposes protected cache roots as read-only grouped records', async () => {
+  const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-mcp-protected-cache-details-'));
+  const homeDir = path.join(baseDir, 'home');
+  const cacheDir = path.join(homeDir, 'Library', 'Caches');
+  const sharedCacheDir = path.join(baseDir, 'Library', 'Caches');
+  const systemCacheDir = path.join(baseDir, 'System', 'Library', 'Caches');
+
+  await fs.mkdir(path.join(cacheDir, 'com.apple.Safari'), { recursive: true });
+  await fs.mkdir(path.join(cacheDir, 'com.example.user-app'), { recursive: true });
+  await fs.mkdir(path.join(sharedCacheDir, 'com.example.shared'), { recursive: true });
+  await fs.mkdir(path.join(systemCacheDir, 'com.apple.core'), { recursive: true });
+
+  const runner = {
+    execFile: async (file, args) => {
+      if (file === 'du') {
+        return { stdout: args.slice(1).map((target, index) => `${index + 1}\t${target}`).join('\n') + '\n' };
+      }
+      return { stdout: '' };
+    }
+  };
+
+  try {
+    const details = await createPortService({ homeDir, cacheDir, sharedCacheDir, systemCacheDir, runner }).getCacheDetails();
+    assert.deepEqual(
+      details.filter(item => item.category === 'SYSTEM_PROTECTED').map(({ name, protectedGroup }) => ({ name, protectedGroup })),
+      [
+        { name: 'com.apple.Safari', protectedGroup: 'apple-user' },
+        { name: 'com.example.shared', protectedGroup: 'shared-system' },
+        { name: 'com.apple.core', protectedGroup: 'macos-system' }
+      ]
+    );
+    assert.equal(details.find(item => item.name === 'com.example.user-app').category, 'NEEDS_CONFIRMATION');
   } finally {
     await fs.rm(baseDir, { recursive: true, force: true });
   }
@@ -369,6 +421,3 @@ test('trashCachePath throws ACTIVE_PROCESS_LOCK 409 PortManagerError when active
     }
   );
 });
-
-
-

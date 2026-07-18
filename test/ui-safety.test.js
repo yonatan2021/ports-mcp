@@ -203,8 +203,12 @@ test('UI shows read-only storage and cache findings', () => {
   assert.match(indexHtml, /id="metric-cache-usage"/);
   assert.match(indexHtml, /id="cache-findings"/);
   assert.match(indexHtml, /id="storage-refresh-btn"/);
-  assert.match(appJs, /fetch\('\/api\/system\/storage'/);
+  assert.match(appJs, /fetch\('\/api\/system\/disk'/);
+  assert.match(appJs, /fetch\('\/api\/system\/cache'/);
+  assert.match(appJs, /Promise\.all/);
+  assert.match(appJs, /persistentCache\.read\(STORAGE_CACHE_KEY/);
   assert.match(appJs, /updateStorageUsage/);
+  assert.match(appJs, /updateDiskUsage/);
   assert.match(styleCss, /\.storage-findings/);
 });
 
@@ -241,6 +245,18 @@ test('cache cleaner groups items in collapsed, accessible safety categories', ()
   assert.match(appJs, /function getSafeCacheItems/);
   assert.match(appJs, /function renderCacheGroup/);
   assert.match(appJs, /aria-expanded/);
+});
+
+test('cache view renders protected cache subgroups as information only', () => {
+  assert.match(appJs, /apple-user/);
+  assert.match(appJs, /shared-system/);
+  assert.match(appJs, /macos-system/);
+  assert.match(appJs, /מטמוני Apple בחשבון המשתמש/);
+  assert.match(appJs, /מטמוני מערכת משותפים/);
+  assert.match(appJs, /מטמוני macOS מוגנים/);
+  assert.match(appJs, /מידע בלבד/);
+  assert.match(appJs, /מנוהל על ידי macOS ואינו זמין לניקוי/);
+  assert.match(styleCss, /\.cache-protected-subgroup/);
 });
 
 test('safe cleanup wizard reviews only backend-safe cache items', () => {

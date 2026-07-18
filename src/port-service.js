@@ -473,7 +473,7 @@ function createPortService(options = {}) {
     };
   }
 
-  async function getStorageUsage() {
+  async function getDiskUsage() {
     const { stdout: diskStdout } = await runner.execFile('df', ['-kP', '/'], { allowNonZero: true });
     const diskLine = String(diskStdout || '').trim().split('\n').at(-1).trim().split(/\s+/);
     const totalKiB = Number(diskLine[1]);
@@ -484,6 +484,17 @@ function createPortService(options = {}) {
     if (![totalKiB, usedKiB, availableKiB, percentage].every(Number.isFinite)) {
       throw new PortManagerError('STORAGE_UNAVAILABLE', 'Could not read disk usage', { status: 503 });
     }
+
+    return {
+      totalBytes: totalKiB * 1024,
+      usedBytes: usedKiB * 1024,
+      availableBytes: availableKiB * 1024,
+      percentage,
+    };
+  }
+
+  async function getStorageUsage() {
+    const disk = await getDiskUsage();
 
     const cacheDir = options.cacheDir || path.join(homeDir, 'Library', 'Caches');
     let cachePaths = [];
@@ -513,10 +524,7 @@ function createPortService(options = {}) {
 
     return {
       disk: {
-        totalBytes: totalKiB * 1024,
-        usedBytes: usedKiB * 1024,
-        availableBytes: availableKiB * 1024,
-        percentage,
+        ...disk,
       },
       cache: {
         knownBytes: cacheItems.reduce((total, item) => total + item.bytes, 0),
@@ -676,11 +684,12 @@ function createPortService(options = {}) {
       } catch {}
     }
 
-    // Scan general User Caches
+    // Scan general User Caches. Apple caches are reported separately as
+    // protected, information-only entries.
     try {
       const entries = await fs.readdir(cacheDir, { withFileTypes: true });
       const systemCaches = entries
-        .filter(entry => entry.isDirectory() && !['Yarn', 'pnpm', 'CocoaPods'].includes(entry.name))
+        .filter(entry => entry.isDirectory() && !['Yarn', 'pnpm', 'CocoaPods'].includes(entry.name) && !entry.name.startsWith('com.apple.'))
         .map(entry => ({
           name: entry.name,
           path: path.join(cacheDir, entry.name),
@@ -691,10 +700,52 @@ function createPortService(options = {}) {
       items.push(...systemCaches);
     } catch {}
 
-    // Invoke safetyLayer.checkCachePath for each scanned path
+    const protectedRoots = [
+      {
+        path: cacheDir,
+        protectedGroup: 'apple-user',
+        include: name => name.startsWith('com.apple.'),
+        description: 'Apple cache in the user account (information only)'
+      },
+      {
+        path: options.sharedCacheDir || '/Library/Caches',
+        protectedGroup: 'shared-system',
+        include: () => true,
+        description: 'Managed by macOS and unavailable for cleaning'
+      },
+      {
+        path: options.systemCacheDir || '/System/Library/Caches',
+        protectedGroup: 'macos-system',
+        include: () => true,
+        description: 'Managed by macOS and unavailable for cleaning'
+      }
+    ];
+
+    for (const root of protectedRoots) {
+      try {
+        const entries = await fs.readdir(root.path, { withFileTypes: true });
+        items.push(...entries
+          .filter(entry => entry.isDirectory() && root.include(entry.name))
+          .map(entry => ({
+            name: entry.name,
+            path: path.join(root.path, entry.name),
+            description: root.description,
+            category: 'SYSTEM_PROTECTED',
+            protectedGroup: root.protectedGroup
+          }))
+          .slice(0, 100));
+      } catch {}
+    }
+
+    // Only cleanable user caches go through the destructive-path allowlist.
+    // Protected entries are read-only information and may be outside $HOME.
     if (safetyLayer && typeof safetyLayer.checkCachePath === 'function') {
       const checkedItems = [];
       for (const item of items) {
+        if (item.category === 'SYSTEM_PROTECTED') {
+          checkedItems.push(item);
+          continue;
+        }
         try {
           await safetyLayer.checkCachePath(item.path);
           checkedItems.push(item);
@@ -811,6 +862,7 @@ function createPortService(options = {}) {
     killProcessOnPort,
     restartProcessOnPort,
     getSystemUsage,
+    getDiskUsage,
     getStorageUsage,
     getSystemProcesses,
     suspendProcess,
