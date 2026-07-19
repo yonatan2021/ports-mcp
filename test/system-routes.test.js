@@ -242,3 +242,146 @@ test('POST /api/system/cache/trash with paths (batch) triggers trashCachePath an
     await new Promise(r => server.close(r));
   }
 });
+
+test('GET /api/safety returns safety status', async () => {
+  const safetyLayerMock = {
+    getStatus: () => ({ mode: 'blocklist', verifyOwner: true })
+  };
+  const app = createApp({ service: {}, safetyLayer: safetyLayerMock });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${address.port}/api/safety`);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(data, { safety: { mode: 'blocklist', verifyOwner: true } });
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
+test('POST /api/safety/mode updates mode', async () => {
+  let modeUpdatedTo = null;
+  let refreshCalled = false;
+  const configMock = {
+    setMode: (mode) => { modeUpdatedTo = mode; }
+  };
+  const safetyLayerMock = {
+    refreshRateLimiters: () => { refreshCalled = true; }
+  };
+  const app = createApp({ service: {}, safetyLayer: safetyLayerMock, config: configMock });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${address.port}/api/safety/mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'allowlist' })
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(data, { ok: true, mode: 'allowlist' });
+    assert.equal(modeUpdatedTo, 'allowlist');
+    assert.equal(refreshCalled, true);
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
+test('POST /api/safety/mode returns 400 for invalid mode', async () => {
+  const app = createApp({ service: {}, safetyLayer: {}, config: {} });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${address.port}/api/safety/mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'invalid-mode' })
+    });
+    assert.equal(res.status, 400);
+    const data = await res.json();
+    assert.equal(data.error.code, 'INVALID_MODE');
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
+test('POST /api/safety/allowlist manages allowlist', async () => {
+  let actionCalled = null;
+  let portCalled = null;
+  const configMock = {
+    allowlist: new Set([8080]),
+    addToAllowlist: (p) => { actionCalled = 'add'; portCalled = p; configMock.allowlist.add(p); },
+    removeFromAllowlist: (p) => { actionCalled = 'remove'; portCalled = p; configMock.allowlist.delete(p); }
+  };
+  const app = createApp({ service: {}, safetyLayer: {}, config: configMock });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+
+  try {
+    // Add port
+    const res1 = await fetch(`http://127.0.0.1:${address.port}/api/safety/allowlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', port: 3000 })
+    });
+    assert.equal(res1.status, 200);
+    const data1 = await res1.json();
+    assert.deepEqual(data1, { ok: true, action: 'add', port: 3000, allowlist: [3000, 8080] });
+    assert.equal(actionCalled, 'add');
+    assert.equal(portCalled, 3000);
+
+    // Remove port
+    const res2 = await fetch(`http://127.0.0.1:${address.port}/api/safety/allowlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'remove', port: 8080 })
+    });
+    assert.equal(res2.status, 200);
+    const data2 = await res2.json();
+    assert.deepEqual(data2, { ok: true, action: 'remove', port: 8080, allowlist: [3000] });
+    assert.equal(actionCalled, 'remove');
+    assert.equal(portCalled, 8080);
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
+test('POST /api/safety/allowlist returns 400 for invalid port or action', async () => {
+  const app = createApp({ service: {}, safetyLayer: {}, config: { allowlist: new Set() } });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+
+  try {
+    // Invalid port
+    const res1 = await fetch(`http://127.0.0.1:${address.port}/api/safety/allowlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', port: 'not-a-port' })
+    });
+    assert.equal(res1.status, 400);
+    const data1 = await res1.json();
+    assert.equal(data1.error.code, 'INVALID_PORT');
+
+    // Invalid action
+    const res2 = await fetch(`http://127.0.0.1:${address.port}/api/safety/allowlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'invalid-action', port: 3000 })
+    });
+    assert.equal(res2.status, 400);
+    const data2 = await res2.json();
+    assert.equal(data2.error.code, 'INVALID_ACTION');
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+

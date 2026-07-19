@@ -84,3 +84,22 @@ test('does not merge when origin/main already matches HEAD', async () => {
   assert.deepEqual(result, { status: 'up-to-date', commit: 'old-commit' });
   assert.equal(calls.includes('merge --ff-only origin/main'), false);
 });
+
+test('throws TypeError when repoDir is not provided', async () => {
+  await assert.rejects(
+    () => updateFromGitHubMain({}),
+    /repoDir is required/
+  );
+});
+
+test('propagates errors when git execution fails', async () => {
+  const run = async () => {
+    throw new Error('git execution failed');
+  };
+
+  await assert.rejects(
+    () => updateFromGitHubMain({ repoDir: REPO_DIR, run }),
+    /git execution failed/
+  );
+});
+

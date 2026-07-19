@@ -180,3 +180,127 @@ test('resolveRunningAppBundle accepts only the packaged Port Manager executable 
   assert.equal(resolveRunningAppBundle('/usr/local/bin/electron'), null);
   assert.equal(resolveRunningAppBundle('/Applications/Other.app/Contents/MacOS/Other'), null);
 });
+
+test('downloadAsset rejects when download size exceeds declared asset size', async () => {
+  const bytes = Buffer.from('verified update archive');
+  const asset = {
+    url: 'https://github.com/yonatan2021/ports-mcp/releases/download/v1.1.0/Port-Manager-1.1.0-arm64.zip',
+    digest: crypto.createHash('sha256').update(bytes).digest('hex'),
+    size: bytes.length - 5, // make declared size smaller
+  };
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-update-size-test-'));
+  const destination = path.join(directory, 'update.zip');
+  const fetchImpl = async () => ({
+    ok: true,
+    body: Readable.toWeb(Readable.from([bytes])),
+  });
+
+  try {
+    await assert.rejects(
+      downloadAsset(asset, { destination, fetchImpl }),
+      /exceeded the declared asset size/
+    );
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('downloadAsset rejects when HTTP response is not ok', async () => {
+  const asset = {
+    url: 'https://github.com/yonatan2021/ports-mcp/releases/download/v1.1.0/Port-Manager-1.1.0-arm64.zip',
+    digest: 'a'.repeat(64),
+    size: 100,
+  };
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-update-http-test-'));
+  const destination = path.join(directory, 'update.zip');
+  const fetchImpl = async () => ({
+    ok: false,
+    status: 404,
+  });
+
+  try {
+    await assert.rejects(
+      downloadAsset(asset, { destination, fetchImpl }),
+      /Update download failed with HTTP 404/
+    );
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('verifyStagedApp rejects when codesign verify fails', async () => {
+  const run = async (command, args) => {
+    if (command === '/usr/bin/codesign') {
+      throw new Error('codesign verification failed');
+    }
+    return '';
+  };
+
+  await assert.rejects(
+    () => verifyStagedApp({
+      appPath: '/tmp/Port Manager.app',
+      expectedVersion: '1.1.0',
+      arch: 'arm64',
+      run,
+    }),
+    /codesign verification failed/
+  );
+});
+
+test('verifyStagedApp rejects when bundle ID mismatches', async () => {
+  const run = async (command, args) => {
+    if (command === '/usr/bin/plutil' && args[1] === 'CFBundleIdentifier') return 'com.malicious.app\n';
+    if (command === '/usr/bin/plutil' && args[1] === 'CFBundleShortVersionString') return '1.1.0\n';
+    if (command === '/usr/bin/lipo') return 'arm64\n';
+    return '';
+  };
+
+  await assert.rejects(
+    () => verifyStagedApp({
+      appPath: '/tmp/Port Manager.app',
+      expectedVersion: '1.1.0',
+      arch: 'arm64',
+      run,
+    }),
+    /Update bundle identifier mismatch: com.malicious.app/
+  );
+});
+
+test('verifyStagedApp rejects when version mismatches', async () => {
+  const run = async (command, args) => {
+    if (command === '/usr/bin/plutil' && args[1] === 'CFBundleIdentifier') return 'com.yonatan2021.portsmcp\n';
+    if (command === '/usr/bin/plutil' && args[1] === 'CFBundleShortVersionString') return '1.2.0\n';
+    if (command === '/usr/bin/lipo') return 'arm64\n';
+    return '';
+  };
+
+  await assert.rejects(
+    () => verifyStagedApp({
+      appPath: '/tmp/Port Manager.app',
+      expectedVersion: '1.1.0',
+      arch: 'arm64',
+      run,
+    }),
+    /Update version mismatch: expected 1.1.0, received 1.2.0/
+  );
+});
+
+test('verifyStagedApp rejects when architecture mismatches', async () => {
+  const run = async (command, args) => {
+    if (command === '/usr/bin/plutil' && args[1] === 'CFBundleIdentifier') return 'com.yonatan2021.portsmcp\n';
+    if (command === '/usr/bin/plutil' && args[1] === 'CFBundleShortVersionString') return '1.1.0\n';
+    if (command === '/usr/bin/lipo') return 'x86_64\n';
+    return '';
+  };
+
+  await assert.rejects(
+    () => verifyStagedApp({
+      appPath: '/tmp/Port Manager.app',
+      expectedVersion: '1.1.0',
+      arch: 'arm64',
+      run,
+    }),
+    /Update architecture mismatch: expected arm64/
+  );
+});
+

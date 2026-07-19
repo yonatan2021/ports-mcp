@@ -11,6 +11,7 @@
 <body>
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
+  <div id="ui-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Main App Layout -->
   <div class="app-container">
@@ -47,10 +48,10 @@
           </svg>
           רענון
         </button>
-        <div class="header-search-wrapper" style="position: relative; display: flex; align-items: center; width: 280px; margin-left: 12px; margin-right: 12px;">
-          <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" style="position: absolute; right: 10px; color: var(--text-muted); pointer-events: none;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="text" id="global-search-input" placeholder="חיפוש מהיר של פורטים, תהליכים או Cache..." style="width: 100%; padding: 0.45rem 2.25rem 0.45rem 0.75rem; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border-glass); border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--font-size-sm); font-family: inherit; transition: all var(--transition-fast); text-align: right;" onfocus="this.style.borderColor='var(--color-primary)'; this.style.boxShadow='0 0 0 2px rgba(0, 230, 242, 0.15)';" onblur="this.style.borderColor='var(--border-glass)'; this.style.boxShadow='none';">
-        </div>
+        <button id="focus-mode-btn" class="btn btn-secondary btn-focus-mode" type="button" aria-pressed="false" aria-label="הפעל מצב ריכוז">
+          <span aria-hidden="true">◐</span>
+          מצב ריכוז
+        </button>
         <button id="info-trigger-btn" class="info-hub-btn" aria-label="פתח מדריך והסברים">
           <span>ⓘ</span>
         </button>
@@ -136,27 +137,23 @@
               </div>
               <p id="results-count" class="results-count" aria-live="polite">טוען נתונים…</p>
             </div>
-            <div class="search-wrapper">
-              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-              <input type="text" id="search-input" placeholder="חיפוש אפליקציה או מספר פורט…" autocomplete="off" aria-label="חיפוש אפליקציה או מספר פורט">
+            <div class="workspace-quick-actions" aria-label="פעולות מהירות">
+              <button id="quick-action-resolve" class="quick-action" type="button" aria-expanded="false" aria-controls="port-resolver">שחרור פורט</button>
+            </div>
+            <div class="workspace-primary-controls">
+              <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input type="text" id="search-input" placeholder="חיפוש אפליקציה או מספר פורט…" autocomplete="off" aria-label="חיפוש אפליקציה או מספר פורט">
+              </div>
             </div>
 
             <!-- Search Quick Chips -->
-            <div id="search-chips-container" class="search-chips-container">
-              <span class="chips-label">קיצורים:</span>
-              <button class="search-chip" data-query="3000">🔌 3000</button>
-              <button class="search-chip" data-query="8080">🔌 8080</button>
-              <button class="search-chip" data-query="5173">🔌 5173</button>
-              <button class="search-chip" data-query="node">🟢 Node</button>
-              <button class="search-chip" data-query="postgres">🐘 Postgres</button>
-              <button class="search-chip" data-query="docker">🐳 Docker</button>
-            </div>
 
             <!-- Quick Port Conflict Resolver -->
-            <div class="port-resolver-wrapper">
+            <div id="port-resolver" class="port-resolver-wrapper hidden" hidden>
               <div class="resolver-header">
                 <span class="resolver-title">⚡ משחרר פורטים מהיר</span>
                 <span class="resolver-subtitle">שגיאת Port Already in Use? שחררו את הפורט כאן בשניות</span>
@@ -231,6 +228,11 @@
               <p class="eyebrow">ניקוי בטוח של קבצים זמניים</p>
               <h2 id="cache-summary-title">אפשר לפנות מקום בלי לגעת בקבצים האישיים שלך</h2>
               <p>Cache הוא מידע זמני שאפליקציות יכולות ליצור מחדש. הניקוי מעביר פריטים לפח האשפה ולא מוחק אותם לצמיתות.</p>
+              <ul class="cache-summary-insights" aria-label="עקרונות הניקוי הבטוח">
+                <li><strong>מיון מראש</strong><span>כל תיקייה מסווגת לפני שמוצעת פעולה.</span></li>
+                <li><strong>שליטה מלאה</strong><span>פריטים רגישים מחייבים בדיקה נוספת.</span></li>
+                <li><strong>רשת ביטחון</strong><span>הניקוי מעביר לפח האשפה, לא למחיקה מיידית.</span></li>
+              </ul>
             </div>
             <div class="cache-summary-metrics" aria-live="polite">
               <span>בטוח לניקוי <strong id="cache-summary-safe-size">—</strong></span>
@@ -240,11 +242,10 @@
               <button id="quick-clean-cache-btn" class="btn btn-success hidden" type="button">ניקוי בטוח</button>
               <button id="storage-refresh-btn" class="btn btn-secondary" type="button">סריקה מחדש</button>
             </div>
-          </section>
-
-          <section class="cache-explainer glass" aria-labelledby="cache-explainer-title">
-            <h3 id="cache-explainer-title">איך יודעים מה בטוח?</h3>
-            <p>המערכת מסווגת כל תיקייה לפני ההצגה. הניקוי המהיר כולל רק פריטים שסומנו מראש כבטוחים; פריטים אחרים דורשים בדיקה או נשארים מוגנים.</p>
+            <details class="cache-safety-note">
+              <summary>מה נכלל בניקוי בטוח?</summary>
+              <p>הניקוי המהיר כולל רק פריטים שסומנו מראש כבטוחים. קבצים אחרים נשארים מוגנים או דורשים בדיקה שלך.</p>
+            </details>
           </section>
 
           <section class="cache-controls glass" aria-label="חיפוש וסינון תיקיות Cache">

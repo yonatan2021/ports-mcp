@@ -16,6 +16,59 @@ test('UI is self-contained and does not load remote fonts or telemetry assets', 
   assert.match(styleCss, /system-ui/);
 });
 
+test('UI provides premium state feedback without excluding motion-sensitive users', () => {
+  assert.match(indexHtml, /id="ui-live-region"/);
+  assert.match(indexHtml, /aria-live="polite"/);
+  assert.match(appJs, /function renderTableSkeleton/);
+  assert.match(appJs, /function setButtonBusy/);
+  assert.match(appJs, /function announceUiStatus/);
+  assert.match(appJs, /pointerdown/);
+  assert.match(appJs, /pointerup/);
+  assert.match(appJs, /window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)/);
+  assert.match(styleCss, /\.table-skeleton/);
+  assert.match(styleCss, /@keyframes skeleton-shimmer/);
+  assert.match(styleCss, /\.is-busy/);
+  assert.match(styleCss, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test('UI supports a persistent focus mode and contextual port release', () => {
+  assert.match(indexHtml, /id="focus-mode-btn"/);
+  assert.match(indexHtml, /id="quick-action-resolve"/);
+  assert.match(appJs, /function setFocusMode/);
+  assert.match(appJs, /FOCUS_MODE_STORAGE_KEY/);
+  assert.match(styleCss, /body\.focus-mode/);
+  assert.match(styleCss, /\.workspace-quick-actions/);
+});
+
+test('first workspace screen has one search, a contextual resolver, and mobile-safe controls', () => {
+  assert.doesNotMatch(indexHtml, /id="global-search-input"/);
+  assert.doesNotMatch(indexHtml, /class="search-chip"/);
+  assert.match(indexHtml, /id="search-input"/);
+  assert.match(indexHtml, /id="focus-mode-btn"/);
+  assert.match(indexHtml, /id="quick-action-resolve"/);
+  assert.doesNotMatch(indexHtml, /id="quick-action-search"/);
+  assert.match(indexHtml, /id="port-resolver" class="port-resolver-wrapper hidden"/);
+  assert.match(appJs, /function setFocusMode/);
+  assert.match(appJs, /function setResolverOpen\(isOpen, \{ focusInput = false \} = \{\}\)/);
+  assert.match(appJs, /const isPortQuery =/);
+  assert.match(appJs, /פורט לא תקין\. נא להקליד מספר בין 1 ל-65535/);
+  assert.match(appJs, /openConfirmModal\('kill'/);
+  assert.match(appJs, /killDisabled = isAggregate \|\| isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
+  assert.match(styleCss, /\.workspace-primary-controls/);
+  assert.match(styleCss, /#search-input,\s*\.quick-action,\s*\.filter-tab,\s*\.view-mode-btn \{ min-height: 44px;/);
+  assert.match(styleCss, /@media \(max-width: 640px\)[\s\S]*\.header-actions \{ width: 100%; flex-wrap: wrap;/);
+  assert.match(styleCss, /body\.focus-mode \.system-status-bar/);
+});
+
+test('cache overview uses desktop space for actionable context instead of stacked empty panels', () => {
+  assert.match(indexHtml, /class="cache-summary-insights"/);
+  assert.match(indexHtml, /class="cache-safety-note"/);
+  assert.doesNotMatch(indexHtml, /class="cache-explainer/);
+  assert.match(styleCss, /grid-template-areas:\s*'copy metrics'\s*'copy actions'\s*'safety safety'/);
+  assert.match(styleCss, /\.cache-summary-insights/);
+  assert.match(styleCss, /\.cache-safety-note/);
+});
+
 test('UI has RTL support with lang=he and dir=rtl', () => {
   assert.match(indexHtml, /lang="he"/);
   assert.match(indexHtml, /dir="rtl"/);

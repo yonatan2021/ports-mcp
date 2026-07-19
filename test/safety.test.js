@@ -651,5 +651,42 @@ test('SafetyLayer.checkCachePath detects traversal in raw targetPath', () => {
   }
 });
 
+test('SafetyLayer.checkCachePath rejects empty or whitespace-only paths', () => {
+  const config = new SafetyConfig({ mode: 'allowlist' });
+  const safety = new SafetyLayer({ config, currentUser: 'testuser' });
+
+  assert.throws(
+    () => safety.checkCachePath(''),
+    err => err instanceof SafetyError && err.code === 'PATH_OUTSIDE_HOME'
+  );
+  assert.throws(
+    () => safety.checkCachePath('   '),
+    err => err instanceof SafetyError && err.code === 'PATH_OUTSIDE_HOME'
+  );
+});
+
+test('SafetyLayer.checkCachePath rejects unrecognized cache patterns in home directory', () => {
+  const os = require('node:os');
+  const originalHomedir = os.homedir;
+  os.homedir = () => '/Users/testuser';
+
+  try {
+    const config = new SafetyConfig({ mode: 'allowlist' });
+    const safety = new SafetyLayer({ config, currentUser: 'testuser' });
+
+    assert.throws(
+      () => safety.checkCachePath('/Users/testuser/Documents/MyFile.txt'),
+      err => err instanceof SafetyError && err.code === 'PATH_NOT_A_CACHE'
+    );
+    assert.throws(
+      () => safety.checkCachePath('/Users/testuser/Library/Safari'),
+      err => err instanceof SafetyError && err.code === 'PATH_NOT_A_CACHE'
+    );
+  } finally {
+    os.homedir = originalHomedir;
+  }
+});
+
+
 
 

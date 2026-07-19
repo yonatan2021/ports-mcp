@@ -26,7 +26,9 @@ const STORAGE_CACHE_KEY = 'ports-mcp-storage-cache-v1';
 const STORAGE_CACHE_TTL_MS = 300_000;
 const UPDATE_CACHE_KEY = 'ports-mcp-app-update-cache-v1';
 const UPDATE_CACHE_TTL_MS = 86_400_000;
+const FOCUS_MODE_STORAGE_KEY = 'ports-mcp-focus-mode';
 const persistentCache = window.PersistentCache.createPersistentCache();
+const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // Self Port detection based on the loaded URL
 const selfPort = parseInt(window.location.port, 10) || 9999;
@@ -300,17 +302,21 @@ function getListenerInfo(portObj) {
 const elements = {
   tableBody: document.getElementById('ports-table-body'),
   refreshBtn: document.getElementById('refresh-btn'),
+  focusModeBtn: document.getElementById('focus-mode-btn'),
+  quickActionSearch: document.getElementById('quick-action-search'),
+  quickActionResolve: document.getElementById('quick-action-resolve'),
   searchInput: document.getElementById('search-input'),
   filterTabs: document.querySelectorAll('.filter-tab'),
   emptyState: document.getElementById('empty-state'),
   toastContainer: document.getElementById('toast-container'),
+  uiLiveRegion: document.getElementById('ui-live-region'),
 
   // Info Hub Modal Selectors
   infoModal: document.getElementById('info-modal'),
   infoCloseBtn: document.getElementById('info-close-btn'),
   infoOkBtn: document.getElementById('info-ok-btn'),
   infoTriggerBtn: document.getElementById('info-trigger-btn'),
-  globalSearchInput: document.getElementById('global-search-input'),
+  portResolver: document.getElementById('port-resolver'),
 
   // Navigation tab inline badges
   tabBadgePorts: document.getElementById('tab-badge-ports'),
@@ -423,6 +429,7 @@ const elements = {
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
+  setFocusMode(localStorage.getItem(FOCUS_MODE_STORAGE_KEY) === 'true', { announce: false });
   fetchAppInfo();
   updateSystemUsage();
   startSystemUsagePolling();
@@ -433,6 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function switchTab(tabId) {
+  const isNewTab = localStorage.getItem('activeTab') !== tabId;
   if (tabId === 'ports') {
     if (elements.tabBtnPorts) elements.tabBtnPorts.classList.add('active');
     if (elements.tabBtnCache) elements.tabBtnCache.classList.remove('active');
@@ -440,6 +448,7 @@ function switchTab(tabId) {
     if (elements.viewCache) elements.viewCache.classList.add('hidden');
 
     localStorage.setItem('activeTab', 'ports');
+    document.documentElement.dataset.activeTab = 'ports';
     fetchPorts();
     startPolling();
   } else if (tabId === 'cache') {
@@ -449,9 +458,63 @@ function switchTab(tabId) {
     if (elements.viewCache) elements.viewCache.classList.remove('hidden');
 
     localStorage.setItem('activeTab', 'cache');
+    document.documentElement.dataset.activeTab = 'cache';
     stopPolling();
     updateStorageUsage();
   }
+
+  if (isNewTab) announceUiStatus(tabId === 'ports' ? 'עברת לתצוגת פורטים ותהליכים' : 'עברת לתצוגת ניקוי Cache');
+}
+
+function announceUiStatus(message) {
+  if (elements.uiLiveRegion) elements.uiLiveRegion.textContent = message;
+}
+
+function setButtonBusy(button, isBusy, statusMessage) {
+  if (!button) return;
+  button.classList.toggle('is-busy', isBusy);
+  button.toggleAttribute('aria-busy', isBusy);
+  button.disabled = isBusy;
+  if (statusMessage) announceUiStatus(statusMessage);
+}
+
+function setFocusMode(enabled, { announce = true } = {}) {
+  document.body.classList.toggle('focus-mode', enabled);
+  if (elements.focusModeBtn) {
+    elements.focusModeBtn.setAttribute('aria-pressed', String(enabled));
+    elements.focusModeBtn.setAttribute('aria-label', enabled ? 'צא ממצב ריכוז' : 'הפעל מצב ריכוז');
+    elements.focusModeBtn.innerHTML = `<span aria-hidden="true">${enabled ? '◑' : '◐'}</span> ${enabled ? 'יציאה מריכוז' : 'מצב ריכוז'}`;
+  }
+  localStorage.setItem(FOCUS_MODE_STORAGE_KEY, String(enabled));
+  if (announce) announceUiStatus(enabled ? 'מצב ריכוז פעיל: המדדים וההסברים צומצמו' : 'יצאת ממצב ריכוז');
+}
+
+function setResolverOpen(isOpen, { focusInput = false } = {}) {
+  const resolver = elements.portResolver;
+  const toggle = elements.quickActionResolve;
+  if (!resolver || !toggle) return;
+  resolver.classList.toggle('hidden', !isOpen);
+  resolver.hidden = !isOpen;
+  toggle.setAttribute('aria-expanded', String(isOpen));
+  if (focusInput && isOpen) document.getElementById('quick-resolve-input')?.focus({ preventScroll: true });
+}
+
+function renderTableSkeleton(label = 'טוען נתונים עדכניים…') {
+  const rows = Array.from({ length: 5 }, () => `
+    <tr class="table-skeleton" aria-hidden="true">
+      <td><span class="skeleton-line skeleton-port"></span></td>
+      <td><span class="skeleton-line skeleton-title"></span><span class="skeleton-line skeleton-subtitle"></span></td>
+      <td class="column-pid"><span class="skeleton-line skeleton-short"></span></td>
+      <td class="column-advanced"><span class="skeleton-line skeleton-short"></span></td>
+      <td class="column-advanced"><span class="skeleton-line skeleton-short"></span></td>
+      <td><span class="skeleton-line skeleton-short"></span></td>
+      <td class="column-command"><span class="skeleton-line skeleton-title"></span></td>
+      <td><span class="skeleton-line skeleton-action"></span></td>
+    </tr>`).join('');
+  elements.tableBody.innerHTML = `
+    <tr class="sr-only"><td colspan="8">${label}</td></tr>
+    ${rows}
+  `;
 }
 
 async function fetchAppInfo() {
@@ -636,11 +699,32 @@ function setupEventListeners() {
   elements.updateButton.addEventListener('click', applyAppUpdate);
 
   // Refresh button
-  elements.refreshBtn.addEventListener('click', () => {
-    fetchPorts();
-    updateStorageUsage();
+  elements.refreshBtn.addEventListener('click', async () => {
+    setButtonBusy(elements.refreshBtn, true, 'מרענן נתוני מערכת…');
+    try {
+      await Promise.all([fetchPorts(), updateStorageUsage()]);
+      announceUiStatus('נתוני המערכת עודכנו');
+    } finally {
+      setButtonBusy(elements.refreshBtn, false);
+    }
   });
-  elements.storageRefreshBtn.addEventListener('click', () => updateStorageUsage({ force: true }));
+  elements.storageRefreshBtn.addEventListener('click', async () => {
+    setButtonBusy(elements.storageRefreshBtn, true, 'סורק את קבצי ה-Cache…');
+    try {
+      await updateStorageUsage({ force: true });
+      announceUiStatus('סריקת ה-Cache הושלמה');
+    } finally {
+      setButtonBusy(elements.storageRefreshBtn, false);
+    }
+  });
+  elements.focusModeBtn?.addEventListener('click', () => {
+    setFocusMode(!document.body.classList.contains('focus-mode'));
+  });
+  elements.quickActionResolve?.addEventListener('click', () => {
+    const expanded = elements.quickActionResolve.getAttribute('aria-expanded') === 'true';
+    setResolverOpen(!expanded, { focusInput: !expanded });
+    announceUiStatus(expanded ? 'שחרור הפורט נסגר' : 'הזיני מספר פורט לשחרור');
+  });
 
   // Sidebar Tabs
   if (elements.tabBtnPorts) {
@@ -649,24 +733,14 @@ function setupEventListeners() {
   if (elements.tabBtnCache) {
     elements.tabBtnCache.addEventListener('click', () => switchTab('cache'));
   }
-
-  // Global Search input
-  if (elements.globalSearchInput) {
-    elements.globalSearchInput.addEventListener('input', (e) => {
-      const val = e.target.value.toLowerCase().trim();
-      searchQuery = val;
-      cacheSearchQuery = val;
-      if (elements.searchInput) elements.searchInput.value = e.target.value;
-      if (elements.cacheSearchInput) elements.cacheSearchInput.value = e.target.value;
-      applyFilters();
-      filterAndRenderCache();
-    });
-  }
+  setupTouchTabNavigation();
 
   // Search input
   elements.searchInput.addEventListener('input', (e) => {
     searchQuery = e.target.value.toLowerCase().trim();
-    if (elements.globalSearchInput) elements.globalSearchInput.value = e.target.value;
+    const isPortQuery = /^\d+$/.test(searchQuery);
+    const portNumber = Number(searchQuery);
+    setResolverOpen(isPortQuery && portNumber >= 1 && portNumber <= 65535);
     applyFilters();
   });
 
@@ -674,7 +748,6 @@ function setupEventListeners() {
   if (elements.cacheSearchInput) {
     elements.cacheSearchInput.addEventListener('input', (e) => {
       cacheSearchQuery = e.target.value.toLowerCase().trim();
-      if (elements.globalSearchInput) elements.globalSearchInput.value = e.target.value;
       filterAndRenderCache();
     });
   }
@@ -846,18 +919,6 @@ function setupEventListeners() {
     });
   }
 
-  // Search Chips event listeners
-  const chips = document.querySelectorAll('.search-chip');
-  chips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      const query = chip.dataset.query;
-      if (elements.searchInput) elements.searchInput.value = query;
-      if (elements.globalSearchInput) elements.globalSearchInput.value = query;
-      searchQuery = query;
-      applyFilters();
-    });
-  });
-
   // Quick Port Resolver event listener
   const resolveInput = document.getElementById('quick-resolve-input');
   const resolveBtn = document.getElementById('quick-resolve-btn');
@@ -891,6 +952,27 @@ function setupEventListeners() {
       }
     });
   }
+}
+
+function setupTouchTabNavigation() {
+  let touchStart = null;
+  document.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' || event.target.closest('input, textarea, select, button, a, [role="dialog"]')) return;
+    touchStart = { x: event.clientX, y: event.clientY };
+  }, { passive: true });
+
+  document.addEventListener('pointerup', (event) => {
+    if (!touchStart || event.pointerType !== 'touch') return;
+    const deltaX = event.clientX - touchStart.x;
+    const deltaY = event.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.5) return;
+    if (!elements.confirmModal.classList.contains('hidden') || !elements.detailsModal.classList.contains('hidden')) return;
+
+    const activeTab = localStorage.getItem('activeTab') || 'ports';
+    const nextTab = deltaX < 0 ? 'cache' : 'ports';
+    if (nextTab !== activeTab) switchTab(nextTab);
+  }, { passive: true });
 }
 
 // --- POLLING LOGIC ---
@@ -983,15 +1065,7 @@ async function fetchPorts() {
     return fetchSystemProcesses();
   }
 
-  // Show loading spinner in Hebrew
-  elements.tableBody.innerHTML = `
-    <tr>
-      <td colspan="8" class="loading-state">
-        <div class="spinner"></div>
-        סורק פורטים פעילים ב-macOS...
-      </td>
-    </tr>
-  `;
+  renderTableSkeleton('סורק פורטים פעילים ב-macOS…');
   elements.emptyState.classList.add('hidden');
 
   try {
@@ -1038,14 +1112,7 @@ async function fetchPortsSilent() {
 }
 
 async function fetchSystemProcesses() {
-  elements.tableBody.innerHTML = `
-    <tr>
-      <td colspan="8" class="loading-state">
-        <div class="spinner"></div>
-        סורק תהליכי מערכת ומשאבים ב-macOS...
-      </td>
-    </tr>
-  `;
+  renderTableSkeleton('סורק תהליכי מערכת ומשאבים ב-macOS…');
   elements.emptyState.classList.add('hidden');
 
   try {
@@ -2393,6 +2460,7 @@ function getProcessIcon(processName) {
 }
 
 function showToast(message, type = 'info') {
+  announceUiStatus(message);
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.innerHTML = `
