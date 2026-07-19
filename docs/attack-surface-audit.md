@@ -104,6 +104,25 @@
 
 **Mitigation:** Audit log is structured JSON to stderr. No unbounded log accumulation.
 
+### MEDIUM (New in 1.1.0)
+
+#### MV-4: Malicious/Unintended Cache Deletion
+**Vector:** Agent uses `clean_cache` to trash arbitrary system/user files or execute directory traversal.
+
+**Mitigation:**
+- Path whitelist: Cache trashing is restricted to a hardcoded whitelist of safe developer/user cache paths (NPM, Xcode, Cargo, Gradle, Bun, etc.).
+- Traversal block: Directory traversal (e.g., `..`) is strictly blocked.
+- Trash integration: Moves paths to the macOS system Trash (using electron shell trash, or fallback safe moving) instead of executing irreversible `rm -rf`.
+- Lock check: Verifies if the cache directory has an active lock before attempting to trash it.
+
+#### MV-5: DoS via Process Suspension
+**Vector:** Agent uses `suspend_process` to pause critical system components or the Port Manager, causing system freeze or application failure.
+
+**Mitigation:**
+- System process blocklist: The same critical processes blocklist (e.g. `launchd`, `kernel_task`) is applied to suspension.
+- Self-suspension protection: The Port Manager refuses to suspend its own PID.
+- Explicit confirmation: Requires `confirm=true` to take effect.
+
 ---
 
 ## Hardening implemented
@@ -114,7 +133,10 @@
 | 3s cooldown between kills | port-service.js | Done |
 | Process name blocklist | port-service.js | Done |
 | System port protection (<1024) | port-service.js | Done |
-| Self-kill protection | port-service.js | Done |
+| Self-kill & Self-suspend protection | port-service.js | Done |
+| Trash integration for caches | port-service.js | Done |
+| Cache path whitelist check | port-service.js | Done |
+| Active lock checks for caches | port-service.js | Done |
 | Audit logging (structured JSON) | port-service.js | Done |
 | stripUserPaths() sanitizer | port-service.js | Done |
 | MAX_PORTS_RETURNED (500) | port-service.js | Done |
@@ -123,6 +145,7 @@
 | Response caps with _meta.count | mcp-server.js | Done |
 | Server timeout (30s) | http-server.js | Done |
 | Headers timeout (35s) | http-server.js | Done |
+| Host header validation | http-server.js | Done |
 | Security headers (XCTO, XFO, Cache-Control) | http-server.js | Done |
 | Input validation on Express routes | http-server.js | Done |
 | CI/CD: gitleaks, npm audit, CodeQL | .github/workflows/security.yml | Done |

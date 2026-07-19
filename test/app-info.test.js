@@ -73,7 +73,7 @@ test('POST /api/app-update is not exposed over HTTP', async () => {
 });
 
 test('the local HTTP server rejects DNS-rebinding Host headers', async () => {
-  const app = createApp({ service: {}, getAppInfo: async () => ({ currentVersion: '1.0.3' }) });
+  const app = createApp({ service: {}, getAppInfo: async () => ({ currentVersion: '1.1.0' }) });
   const server = http.createServer(app);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 

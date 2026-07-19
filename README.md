@@ -23,17 +23,35 @@ The priority entrypoint is the stdio MCP server for AI agents. The existing brow
 
 ## Features
 
-- `list_ports` MCP tool: lists listening TCP ports via `lsof`, enriched with `ps` command lines.
-- `find_process_by_port` MCP tool: returns one listening process for a TCP port.
-- `kill_process_on_port` MCP tool: **destructive but guarded:**
-  - validates `pid` still owns `port` immediately before signaling
-  - refuses to kill the Port Manager itself
-  - refuses system ports (`<=1024`) unless `allowSystemPort=true`
-  - dry-runs unless `confirm=true`
-  - sends `SIGTERM` first; optional `force=true` can follow with `SIGKILL`
-- `restart_process_on_port` MCP tool: present but disabled with a structured `RESTART_NOT_IMPLEMENTED` error.
-- Express web UI/API for local browser use.
-- Mockable command-runner/test harness for parser and destructive guards.
+- **Port Monitoring & Management**:
+  - `list_ports` MCP tool: Lists listening TCP ports via `lsof`, enriched with `ps` command lines. Collapses identical processes and supports caching.
+  - `find_process_by_port` MCP tool: Returns one listening process for a TCP port.
+  - `get_process_details` MCP tool: Enriches standard lsof output with deep process information (uptime, parent PID, full command line).
+  - `verify_process_owner` MCP tool: Confirms the owner of a process to protect against privilege escalation risks.
+  - `kill_process_on_port` & `safe_kill_process` MCP tools: **Destructive but heavily guarded:**
+    - Validates `pid` still owns the port immediately before signaling.
+    - Refuses to kill the Port Manager itself.
+    - Refuses system ports (`<=1024`) unless overridden.
+    - Rate limited (max 5 kills/min) with cooldowns.
+    - Refuses critical system processes (e.g. `launchd`, `kernel_task`).
+    - Requires owner match (can only kill own user's processes).
+    - Dry-runs unless `confirm=true`.
+  - `restart_process_on_port` & `safe_restart_process` MCP tools: Intentionally disabled to prevent arbitrary remote code execution.
+- **System Resource Monitoring**:
+  - `get_system_usage` MCP tool: Returns real-time macOS CPU and Memory usage.
+  - `list_system_processes` MCP tool: Returns top 50 resource-heavy active processes.
+- **Process Suspension**:
+  - `suspend_process` MCP tool: Pauses an active process using `SIGSTOP`. Critical processes are protected.
+  - `resume_process` MCP tool: Resumes a paused process using `SIGCONT`.
+- **Cache Cleaner & Storage Optimizer**:
+  - `list_caches` MCP tool: Scans and lists macOS user and developer caches (NPM, Xcode, Gradle, Bun, Cargo, etc.) with sizes and safety categories.
+  - `clean_cache` MCP tool: Safely moves selected cache paths to the system trash bin. Handles active locks.
+- **Safety Configuration**:
+  - `get_safety_status` MCP tool: Returns current safety configuration, active allowlists/blocklists, and rate-limiting counters.
+- **Express Web UI**:
+  - Optional web interface styled with the **Midnight Glacier** dark-theme redesign.
+  - Interactive tabs for Ports list, System dashboard, Cache optimization, and dynamic Safety settings.
+  - Multi-language RTL layout support (Hebrew / English).
 
 ## Requirements
 
@@ -157,7 +175,63 @@ Escalate from `SIGTERM` to `SIGKILL` only when explicit:
 
 ### `POST /api/ports/restart`
 
-Always returns `RESTART_NOT_IMPLEMENTED`. Restart-by-command is intentionally omitted because accepting arbitrary command lines from MCP/HTTP clients is remote code execution.
+Always returns `RESTART_NOT_IMPLEMENTED`. Restart-by-command is intentionally omitted.
+
+### `GET /api/app-info`
+
+Returns local version and latest update available via GitHub release.
+
+### `GET /api/system/usage`
+
+Returns system-wide real-time CPU and Memory utilization percentages.
+
+### `GET /api/system/storage`
+
+Returns user/developer cache folder sizing details.
+
+### `GET /api/system/disk`
+
+Returns macOS physical disk capacity and current usage.
+
+### `GET /api/system/processes`
+
+Returns top 50 active processes sorted by resource consumption.
+
+### `GET /api/system/cache`
+
+Returns details of safe system caches (path, size, category, status).
+
+### `POST /api/system/cache/trash`
+
+**Destructive.** Trashes a targeted cache folder. Requires `path` and `confirm: true`.
+
+### `POST /api/system/suspend`
+
+**Destructive.** Pauses a running process using SIGSTOP. Requires `pid` and `confirm: true`.
+
+### `POST /api/system/resume`
+
+Resumes a paused process using SIGCONT. Requires `pid`.
+
+### `POST /api/system/kill`
+
+**Destructive.** Kills a specific process by PID. Requires `pid` and `confirm: true`.
+
+### `GET /api/safety`
+
+Returns the current safety configuration (mode, verifyOwner, allowlists/blocklists).
+
+### `POST /api/safety/mode`
+
+Updates safety mode. Accepts `{ "mode": "read-only" | "allowlist" | "blocklist" }`.
+
+### `POST /api/safety/allowlist`
+
+Manages allowlist. Accepts `{ "action": "add" | "remove", "port": number }`.
+
+### `POST /api/safety/blocklist`
+
+Manages blocklist. Accepts `{ "action": "add" | "remove", "port": number }`.
 
 ## Development
 
