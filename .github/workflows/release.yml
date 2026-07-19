@@ -56,10 +56,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/Port-Manager-${VERSION}-arm64.zip" \
-            "dist/Port-Manager-${VERSION}-arm64.dmg" \
-            "dist/Port-Manager-${VERSION}-x64.zip" \
-            "dist/Port-Manager-${VERSION}-x64.dmg" \
+          ASSETS=(
+            "dist/Port-Manager-${VERSION}-arm64.zip"
+            "dist/Port-Manager-${VERSION}-arm64.dmg"
+            "dist/Port-Manager-${VERSION}-x64.zip"
+            "dist/Port-Manager-${VERSION}-x64.dmg"
+          )
+          gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
             --title "Port Manager ${VERSION}" \
-            --generate-notes
+            --generate-notes || \
+          gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
