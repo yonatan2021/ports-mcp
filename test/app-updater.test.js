@@ -71,7 +71,12 @@ test('downloadAsset streams a release ZIP and verifies its SHA-256 digest and si
   const destination = path.join(directory, 'update.zip');
   const fetchImpl = async () => ({
     ok: true,
-    body: Readable.toWeb(Readable.from([bytes])),
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      }
+    }),
   });
 
   try {
@@ -192,7 +197,12 @@ test('downloadAsset rejects when download size exceeds declared asset size', asy
   const destination = path.join(directory, 'update.zip');
   const fetchImpl = async () => ({
     ok: true,
-    body: Readable.toWeb(Readable.from([bytes])),
+    body: new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      }
+    }),
   });
 
   try {
