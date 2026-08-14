@@ -1,0 +1,55 @@
+name: Sync product site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/sync-site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require target repository token
+        env:
+          SITE_SYNC_TOKEN: ${{ secrets.PORTS_SITE_SYNC_TOKEN }}
+        run: |
+          if [ -z "$SITE_SYNC_TOKEN" ]; then
+            echo 'PORTS_SITE_SYNC_TOKEN is not configured' >&2
+            exit 1
+          fi
+      - name: Check out source repository
+        uses: actions/checkout@v4
+        with:
+          path: source
+      - name: Check out target repository
+        uses: actions/checkout@v4
+        with:
+          repository: yonatan2021/Ports
+          token: ${{ secrets.PORTS_SITE_SYNC_TOKEN }}
+          path: target
+      - name: Synchronize managed files
+        run: |
+          set -euo pipefail
+          rsync -a --delete --exclude repository source/site/ target/site/
+          install -m 644 source/site/repository/package.json target/package.json
+          install -m 644 source/site/repository/package-lock.json target/package-lock.json
+          install -m 644 source/site/repository/vercel.json target/vercel.json
+          install -m 644 source/site/repository/.gitignore target/.gitignore
+      - name: Commit and push changes
+        working-directory: target
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- site package.json package-lock.json vercel.json .gitignore)" ]; then
+            exit 0
+          fi
+          git config user.name 'ports-mcp site sync[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add site package.json package-lock.json vercel.json .gitignore
+          git commit -m 'chore: sync product site'
+          git push origin HEAD:main

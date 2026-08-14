@@ -1,0 +1,12 @@
+{
+  "name": "port-manager-site",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "site:build": "node site/scripts/build.mjs",
+    "site:test": "node --test site/test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

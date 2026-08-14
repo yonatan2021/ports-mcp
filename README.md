@@ -251,8 +251,19 @@ GITHUB_TOKEN=... SITE_URL=https://your-domain.example npm run site:build
 
 `GITHUB_TOKEN` is used only at build time to validate the latest GitHub Release
 and its architecture-specific macOS DMG assets. Configure `SITE_URL`,
-`GA_MEASUREMENT_ID`, `GITHUB_TOKEN`, and `VERCEL_DEPLOY_HOOK_URL` as Vercel or
-GitHub secrets; never commit them. The site loads GA4 only after visitor consent.
+`GA_MEASUREMENT_ID`, and `GITHUB_TOKEN` as Vercel environment variables; never
+commit them. The site loads GA4 only after visitor consent.
+
+### Dedicated site repository
+
+The deployment repository is private: [`yonatan2021/Ports`](https://github.com/yonatan2021/Ports).
+The `Sync product site` workflow copies the source-controlled `site/` directory
+and its small deployment template there after every change to `site/` on `main`.
+Add a fine-grained personal access token as the `PORTS_SITE_SYNC_TOKEN` Actions
+secret in this repository. Scope it only to `yonatan2021/Ports` with **Contents:
+Read and write** access. Connect Vercel to `yonatan2021/Ports`; it deploys each
+synchronized commit. The target repo receives only the website source and build
+configuration, not this app's code, credentials, or desktop release artifacts.
 
 ## Security
 
