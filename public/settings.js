@@ -17,7 +17,7 @@
   // ─── State ─────────────────────────────────────────────────
   let safetyState = null;       // cached from GET /api/safety
   let refreshTimerId = null;
-  const REFRESH_INTERVAL = 10000; // 10 seconds
+  const REFRESH_INTERVAL = 30000; // 30 seconds
 
   // Mode translations dictionary
   const modeTranslations = {
@@ -330,6 +330,7 @@
   function togglePanel() {
     const isOpen = !els.panel.classList.contains('open');
     els.panel.classList.toggle('open', isOpen);
+    els.panel.classList.toggle('hidden', !isOpen);
     els.settingsOverlay.classList.toggle('hidden', !isOpen);
     document.body.classList.toggle('settings-open', isOpen);
     if (isOpen) {
@@ -339,6 +340,7 @@
 
   function closePanel() {
     els.panel.classList.remove('open');
+    els.panel.classList.add('hidden');
     els.settingsOverlay.classList.add('hidden');
     document.body.classList.remove('settings-open');
   }
@@ -393,7 +395,9 @@
 
   function startRefreshLoop() {
     stopRefreshLoop();
-    refreshTimerId = setInterval(refreshSafety, REFRESH_INTERVAL);
+    if (!document.hidden) {
+      refreshTimerId = setInterval(refreshSafety, REFRESH_INTERVAL);
+    }
   }
 
   function stopRefreshLoop() {
@@ -402,6 +406,14 @@
       refreshTimerId = null;
     }
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopRefreshLoop();
+    } else {
+      startRefreshLoop();
+    }
+  });
 
   // ─── Toast (compatible with app.js showToast) ──────────────
 
@@ -428,12 +440,12 @@
     getState: function () { return safetyState; },
     /** Check if destructive operations are allowed */
     canKill: function () {
-      if (!safetyState) return true; // default allow if unknown
+      if (!safetyState) return false;
       return safetyState.mode !== 'read-only';
     },
     /** Check if a specific port is allowed for kill */
     isPortAllowed: function (port) {
-      if (!safetyState) return true;
+      if (!safetyState) return false;
       const n = Number(port);
       if (!Number.isInteger(n)) return true;
       if (safetyState.mode === 'allowlist') {
@@ -442,43 +454,69 @@
       if (safetyState.mode === 'blocklist') {
         return !(safetyState.blocklist || []).includes(n);
       }
-      return true; // read-only checked separately
+      return false;
     },
   };
 
   // ─── Init ──────────────────────────────────────────────────
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function init() {
     cacheElements();
     if (!els.panel) return; // no settings panel in DOM
 
     // Toggle
-    els.settingsBtn.addEventListener('click', togglePanel);
-    els.settingsCloseBtn.addEventListener('click', closePanel);
-    els.settingsOverlay.addEventListener('click', function (e) {
-      if (e.target === els.settingsOverlay) closePanel();
+    if (els.settingsBtn) {
+      els.settingsBtn.addEventListener('click', togglePanel);
+    }
+    if (els.settingsCloseBtn) {
+      els.settingsCloseBtn.addEventListener('click', closePanel);
+    }
+    if (els.settingsOverlay) {
+      els.settingsOverlay.addEventListener('click', function (e) {
+        if (e.target === els.settingsOverlay) closePanel();
+      });
+    }
+
+    // Delegated click on panel close buttons inside panel
+    els.panel.addEventListener('click', function (e) {
+      if (e.target.closest('#settings-close-btn') || e.target.closest('.btn-close-modal')) {
+        closePanel();
+      }
     });
+
     document.addEventListener('keydown', onKeydown);
 
     // Mode selector
-    els.modeRadios.forEach(function (radio) {
-      radio.addEventListener('change', onModeChange);
-    });
+    if (els.modeRadios) {
+      els.modeRadios.forEach(function (radio) {
+        radio.addEventListener('change', onModeChange);
+      });
+    }
 
     // Allowlist
-    els.allowlistAddBtn.addEventListener('click', onAllowlistAdd);
-    els.allowlistInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') onAllowlistAdd();
-    });
+    if (els.allowlistAddBtn) els.allowlistAddBtn.addEventListener('click', onAllowlistAdd);
+    if (els.allowlistInput) {
+      els.allowlistInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') onAllowlistAdd();
+      });
+    }
 
     // Blocklist
-    els.blocklistAddBtn.addEventListener('click', onBlocklistAdd);
-    els.blocklistInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') onBlocklistAdd();
-    });
+    if (els.blocklistAddBtn) els.blocklistAddBtn.addEventListener('click', onBlocklistAdd);
+    if (els.blocklistInput) {
+      els.blocklistInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') onBlocklistAdd();
+      });
+    }
 
     // Initial fetch
     refreshSafety();
     startRefreshLoop();
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();

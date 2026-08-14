@@ -21,6 +21,51 @@ test('getDiskUsage reads only df and returns disk capacity', async () => {
   assert.deepEqual(disk, { totalBytes: 1024000, usedBytes: 409600, availableBytes: 614400, percentage: 40 });
 });
 
+test('concurrent cold getDiskUsage calls share one df command', async () => {
+  let commandCount = 0;
+  let releaseCommand;
+  const commandGate = new Promise(resolve => { releaseCommand = resolve; });
+  const runner = {
+    execFile: async () => {
+      commandCount += 1;
+      await commandGate;
+      return { stdout: 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3 1000 400 600 40% /\n' };
+    },
+  };
+  const service = createPortService({ runner });
+
+  const pending = Promise.all(Array.from({ length: 8 }, () => service.getDiskUsage()));
+  await new Promise(resolve => setImmediate(resolve));
+  const observedCount = commandCount;
+  releaseCommand();
+  await pending;
+
+  assert.equal(observedCount, 1);
+});
+
+test('a failed shared disk request is cleared so a later request can retry', async () => {
+  let commandCount = 0;
+  const runner = {
+    execFile: async () => {
+      commandCount += 1;
+      if (commandCount === 1) throw new Error('temporary df failure');
+      return { stdout: 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk3 1000 400 600 40% /\n' };
+    },
+  };
+  const service = createPortService({ runner });
+
+  const firstAttempts = await Promise.allSettled([
+    service.getDiskUsage(),
+    service.getDiskUsage(),
+  ]);
+  assert.ok(firstAttempts.every(result => result.status === 'rejected'));
+
+  const disk = await service.getDiskUsage();
+
+  assert.equal(commandCount, 2);
+  assert.equal(disk.percentage, 40);
+});
+
 test('getStorageUsage reports disk capacity and largest readable cache folders', async () => {
   const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ports-mcp-storage-'));
   const homeDir = path.join(baseDir, 'home');

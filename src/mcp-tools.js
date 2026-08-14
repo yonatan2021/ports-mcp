@@ -349,6 +349,15 @@ function createAgentTools({ service, safetyLayer, runner = null } = {}) {
     }
   }
 
+  async function getActivityMonitorSummary() {
+    try {
+      const summary = await service.getActivityMonitorSummary();
+      return success(summary);
+    } catch (err) {
+      return wrapServiceError(err);
+    }
+  }
+
   return {
     verifyProcessOwner,
     getProcessDetails,
@@ -361,10 +370,16 @@ function createAgentTools({ service, safetyLayer, runner = null } = {}) {
     resumeProcess,
     listCaches,
     cleanCache,
+    getActivityMonitorSummary,
   };
 }
 
 const MCP_TOOL_SCHEMAS = {
+  get_activity_monitor_summary: {
+    name: "get_activity_monitor_summary",
+    description: "Get comprehensive macOS Activity Monitor telemetry across 5 dimensions: CPU, Memory, Energy/Power, Disk/Storage, and Network.",
+    inputSchema: { type: "object", properties: {} }
+  },
   list_caches: {
     name: "list_caches",
     description: "Scan and list macOS user and developer cache folders, size in bytes, and safety category.",

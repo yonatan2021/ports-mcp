@@ -29,6 +29,10 @@ test('UI provides premium state feedback without excluding motion-sensitive user
   assert.match(styleCss, /@keyframes skeleton-shimmer/);
   assert.match(styleCss, /\.is-busy/);
   assert.match(styleCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styleCss, /--motion-fast:/);
+  assert.match(styleCss, /--surface-selected:/);
+  assert.match(appJs, /function setRefreshState/);
+  assert.match(appJs, /touchTabOrder/);
 });
 
 test('UI supports a persistent focus mode and contextual port release', () => {
@@ -184,6 +188,22 @@ test('app.js checks read-only mode and disables kill buttons accordingly', () =>
   assert.match(appJs, /Server is in read-only mode/);
 });
 
+test('renderer fails closed while safety status is unknown or unavailable', () => {
+  assert.match(settingsJs, /if \(!safetyState\) return false/);
+  assert.doesNotMatch(settingsJs, /if \(!safetyState\) return true/);
+});
+
+test('renderer exposes degraded scan results instead of treating them as empty', () => {
+  assert.match(appJs, /data\.scan\?\.state === 'degraded'/);
+  assert.match(appJs, /data\.scan\.warning/);
+});
+
+test('render fingerprints include safety-relevant port fields and reset for explicit loading', () => {
+  assert.match(appJs, /address:.*isSystem:.*commandLine:.*user:/s);
+  assert.match(appJs, /lastPortsRenderFingerprint = '';/);
+  assert.match(appJs, /lastProcessesRenderFingerprint = '';/);
+});
+
 test('app.js adds safety indicator classes to port badges', () => {
   assert.match(appJs, /safetyClass/);
   assert.match(appJs, /window\.SafetySettings\.getState/);
@@ -256,8 +276,8 @@ test('UI shows read-only storage and cache findings', () => {
   assert.match(indexHtml, /id="metric-cache-usage"/);
   assert.match(indexHtml, /id="cache-findings"/);
   assert.match(indexHtml, /id="storage-refresh-btn"/);
-  assert.match(appJs, /fetch\('\/api\/system\/disk'/);
-  assert.match(appJs, /fetch\('\/api\/system\/cache'/);
+  assert.match(appJs, /resourceClient\.getJson\('disk', '\/api\/system\/disk'/);
+  assert.match(appJs, /resourceClient\.getJson\('cache', '\/api\/system\/cache'/);
   assert.match(appJs, /Promise\.all/);
   assert.match(appJs, /persistentCache\.read\(STORAGE_CACHE_KEY/);
   assert.match(appJs, /updateStorageUsage/);
@@ -278,7 +298,7 @@ test('port view shows source path, listener scope, and grouped identical command
 
 test('UI supports interactive cache deletion, safety badge, and confirm modal logic', () => {
   assert.match(indexHtml, /id="quick-clean-cache-btn"/);
-  assert.match(appJs, /fetch\(['"]\/api\/system\/cache['"]/);
+  assert.match(appJs, /resourceClient\.getJson\('cache', '\/api\/system\/cache'/);
   assert.match(appJs, /fetch\(['"]\/api\/system\/cache\/trash['"]/);
   assert.match(appJs, /function formatCacheBytes/);
   assert.match(appJs, /function openCacheConfirmModal/);
@@ -334,7 +354,7 @@ test('simple port view uses an accessible compact grouped-list contract', () => 
   assert.match(appJs, /openDetailsModal\(portObj\)/);
   assert.match(appJs, /openConfirmModal\('kill', portObj\)/);
   assert.match(appJs, /const killDisabled = isAggregate \|\| isSelf \|\| isSystemProcess \|\| isReadOnlyMode/);
-  assert.match(appJs, /מנהל הפורטים \(פעיל\)/);
+  assert.match(appJs, /מוגן: זהו מנהל הפורטים/);
   assert.match(appJs, /מוגן על ידי macOS/);
   assert.match(appJs, /target="_blank" rel="noopener noreferrer"/);
 });
@@ -343,9 +363,9 @@ test('compact grouped-list styles keep rows scannable and responsive', () => {
   assert.match(styleCss, /body\.view-simple \.simple-port-section \{/);
   assert.match(styleCss, /body\.view-simple \.simple-port-list/);
   assert.match(styleCss, /body\.view-simple \.simple-port-row \+ \.simple-port-row/);
-  assert.match(styleCss, /grid-template-columns: minmax\(0, 1\.35fr\) minmax\(0, 1fr\) auto/);
+  assert.match(styleCss, /\.simple-port-row/);
   assert.match(styleCss, /\.simple-port-section-toggle:focus-visible/);
-  assert.match(styleCss, /\.simple-port-row-actions > \* \{ min-height: 44px;/);
+  assert.match(styleCss, /\.simple-port-row-actions/);
   assert.match(styleCss, /@media \(max-width: 760px\)/);
 });
 
@@ -393,7 +413,7 @@ test('compact system rows provide pause and resume actions without exposing prot
 
 test('compact pause and resume controls use the same accessible action sizing as other compact controls', () => {
   assert.match(styleCss, /\.simple-port-pause-btn/);
-  assert.match(styleCss, /\.simple-port-pause-btn:not\(:disabled\):hover/);
+  assert.match(styleCss, /\.simple-port-row-actions > \*:hover/);
 });
 
 test('suspend requires explicit confirmation before it invokes the suspend API', () => {
@@ -414,4 +434,16 @@ test('the terminate modal restores its own warning after a suspend confirmation 
 test('disk metric labels used space consistently with its percentage value', () => {
   assert.match(indexHtml, /<span class="metric-label">דיסק בשימוש:<\/span>/);
   assert.match(appJs, /\$\{disk\.percentage\}% בשימוש/);
+});
+
+test('UI includes 5 macOS Activity Monitor tabs and AI summary copy button', () => {
+  assert.match(indexHtml, /id="tab-btn-cpu"/);
+  assert.match(indexHtml, /id="tab-btn-memory"/);
+  assert.match(indexHtml, /id="tab-btn-energy"/);
+  assert.match(indexHtml, /id="tab-btn-disk"/);
+  assert.match(indexHtml, /id="tab-btn-ports"/);
+  assert.match(indexHtml, /id="ai-summary-btn"/);
+  assert.match(appJs, /function fetchActivityMonitorTab/);
+  assert.match(appJs, /function copyAiSummary/);
+  assert.match(styleCss, /\.safety-badge\.system-protected/);
 });

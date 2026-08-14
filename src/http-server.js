@@ -89,7 +89,7 @@ function createApp({
     try {
       const bypassCache = req.query.bypassCache === 'true' || req.query.refresh === 'true';
       const ports = await service.listPorts({ bypassCache });
-      res.json({ ports });
+      res.json({ ports, scan: typeof service.getPortScanStatus === 'function' ? service.getPortScanStatus() : undefined });
     } catch (error) {
       sendError(res, error);
     }
@@ -164,6 +164,15 @@ function createApp({
     try {
       const processes = await service.getSystemProcesses();
       res.json({ processes });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.get('/api/system/activity-monitor', async (_req, res) => {
+    try {
+      const summary = await service.getActivityMonitorSummary();
+      res.json(summary);
     } catch (error) {
       sendError(res, error);
     }

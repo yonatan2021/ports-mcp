@@ -73,13 +73,22 @@ function createMainWindow() {
     minWidth: 1040,
     minHeight: 700,
     title: 'מנהל הפורטים שלי',
-    backgroundColor: '#111827',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: process.platform === 'darwin' ? { x: 18, y: 18 } : undefined,
+    vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
+    visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
+    // A transparent Electron window keeps the entire renderer in an expensive
+    // compositing path. Native vibrancy still provides the macOS material, so
+    // keep the window itself opaque and let the renderer paint stable surfaces.
+    backgroundColor: '#1e1e22',
+    transparent: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       devTools: !app.isPackaged,
+      backgroundThrottling: true,
     },
   });
 

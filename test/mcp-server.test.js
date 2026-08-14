@@ -1,6 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createMcpServer } = require('../src/mcp-server');
+const { createMcpServer, createDefaultMcpDependencies } = require('../src/mcp-server');
+
+test('default MCP dependencies enforce the same safety boundary as the local app', async () => {
+  const { service, safetyLayer } = createDefaultMcpDependencies();
+
+  assert.ok(safetyLayer, 'the stdio entry point must construct a safety layer');
+  await assert.rejects(
+    () => service.trashCachePath({ path: '/tmp/not-a-managed-cache', confirm: true }),
+    (error) => error.code === 'PATH_OUTSIDE_HOME'
+  );
+});
 
 class MockTransport {
   constructor() {
@@ -99,6 +109,7 @@ test('MCP Server advertises all expected tools on tools/list', async () => {
   assert.ok(toolNames.includes('kill_process_on_port'));
   assert.ok(toolNames.includes('safe_kill_process'));
   assert.ok(toolNames.includes('get_safety_status'));
+  assert.ok(toolNames.includes('get_activity_monitor_summary'));
   assert.ok(toolNames.includes('list_caches'));
   assert.ok(toolNames.includes('clean_cache'));
 });

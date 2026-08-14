@@ -2,9 +2,11 @@ const { execFile: childExecFile } = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const { identifyProject } = require('./project-intelligence');
 
 
 const MAX_PORTS_RETURNED = 500;
+const PROCESS_QUERY_BATCH_SIZE = 100;
 const PROCESS_BLOCKLIST = new Set([
   'launchd', 'kernel_task', 'init', 'syslogd', 'notifyd', 'configd',
   'UserEventAgent', 'WindowServer', 'coreaudiod', 'audio', 'logd',
@@ -48,6 +50,59 @@ function isSystemProcess(portObj) {
   }
 
   return false;
+}
+
+const PROCESS_HUMAN_INFO = {
+  'node': { title: 'Node.js', description: 'סביבת הרצת JavaScript / שרת פיתוח מקומי', category: 'CAUTION' },
+  'python': { title: 'Python', description: 'תסריט או שרת פיתוח ב-Python', category: 'CAUTION' },
+  'python3': { title: 'Python 3', description: 'תסריט או שרת פיתוח ב-Python', category: 'CAUTION' },
+  'chrome': { title: 'Google Chrome', description: 'דפדפן אינטרנט Google Chrome', category: 'SAFE' },
+  'google chrome': { title: 'Google Chrome', description: 'דפדפן אינטרנט Google Chrome', category: 'SAFE' },
+  'safari': { title: 'Safari', description: 'דפדפן אינטרנט Safari של Apple', category: 'SAFE' },
+  'firefox': { title: 'Firefox', description: 'דפדפן אינטרנט Mozilla Firefox', category: 'SAFE' },
+  'code': { title: 'VS Code', description: 'עורך קוד Visual Studio Code', category: 'SAFE' },
+  'electron': { title: 'Electron App', description: 'אפליקציית שולחן עבודה המבוססת על Electron', category: 'SAFE' },
+  'docker': { title: 'Docker', description: 'מנוע קונטיינרים פיתוחי', category: 'CAUTION' },
+  'dockerd': { title: 'Docker Daemon', description: 'שירות הרקע של Docker', category: 'CAUTION' },
+  'git': { title: 'Git', description: 'מערכת ניהול גרסאות קוד', category: 'SAFE' },
+  'windowserver': { title: 'WindowServer', description: 'מנוע התצוגה והחלונות של macOS (קריטי למערכת)', category: 'SYSTEM_PROTECTED' },
+  'kernel_task': { title: 'kernel task', description: 'ליבת מערכת ההפעלה macOS (ניהול חום ומעבד)', category: 'SYSTEM_PROTECTED' },
+  'launchd': { title: 'launchd', description: 'מנהל התהליכים הראשי של macOS', category: 'SYSTEM_PROTECTED' },
+  'finder': { title: 'Finder', description: 'מנהל הקבצים והשולחן עבודה של macOS', category: 'CAUTION' },
+  'dock': { title: 'Dock', description: 'סרגל האפליקציות של macOS', category: 'CAUTION' },
+  'spotlight': { title: 'Spotlight', description: 'מנגנון החיפוש של macOS', category: 'SAFE' },
+  'slack': { title: 'Slack', description: 'אפליקציית תקשורת צוותים', category: 'SAFE' },
+  'discord': { title: 'Discord', description: 'אפליקציית צ\'אט ותקשורת', category: 'SAFE' },
+  'telegram': { title: 'Telegram', description: 'אפליקציית הודעות מיידיות', category: 'SAFE' },
+  'postgres': { title: 'PostgreSQL', description: 'מסד נתונים יחסים', category: 'CAUTION' },
+  'mysqld': { title: 'MySQL', description: 'מסד נתונים MySQL', category: 'CAUTION' },
+  'mongod': { title: 'MongoDB', description: 'מסד נתונים מסמכים', category: 'CAUTION' },
+  'redis-server': { title: 'Redis', description: 'מסד נתונים בזיכרון (Cache)', category: 'CAUTION' },
+  'ollama': { title: 'Ollama AI', description: 'שרת מודלי שפה (LLM) מקומי', category: 'CAUTION' },
+};
+
+function enrichProcessHumanInfo(procObj) {
+  const key = (procObj.processName || '').toLowerCase();
+  const info = PROCESS_HUMAN_INFO[key];
+  if (procObj.isSystem) {
+    return {
+      humanTitle: info ? info.title : procObj.processName,
+      humanDescription: info ? info.description : 'תהליך מערכת מוגן של macOS',
+      safetyCategory: 'SYSTEM_PROTECTED'
+    };
+  }
+  if (info) {
+    return {
+      humanTitle: info.title,
+      humanDescription: info.description,
+      safetyCategory: info.category
+    };
+  }
+  return {
+    humanTitle: procObj.processName,
+    humanDescription: 'אפליקציית משתמש או תהליך מקומי',
+    safetyCategory: 'SAFE'
+  };
 }
 
 
@@ -166,7 +221,7 @@ function createPortService(options = {}) {
   const portsCache = {
     data: null,
     timestamp: 0,
-    ttl: options.portsCacheTtl ?? 2000,
+    ttl: options.portsCacheTtl ?? 4000,
     get() {
       if (this.data && Date.now() - this.timestamp < this.ttl) {
         return this.data;
@@ -182,6 +237,50 @@ function createPortService(options = {}) {
       this.timestamp = 0;
     }
   };
+  let portScanStatus = { state: 'unknown', observedAt: null, source: null, warning: null };
+
+  const diskCache = {
+    data: null,
+    timestamp: 0,
+    ttl: options.diskCacheTtl ?? 30_000,
+    get() {
+      if (this.data && Date.now() - this.timestamp < this.ttl) {
+        return this.data;
+      }
+      return null;
+    },
+    set(data) {
+      this.data = data;
+      this.timestamp = Date.now();
+    },
+    clear() {
+      this.data = null;
+      this.timestamp = 0;
+    }
+  };
+
+  const systemUsageCache = {
+    data: null,
+    timestamp: 0,
+    ttl: options.systemUsageCacheTtl ?? 3500,
+    get() {
+      if (this.data && Date.now() - this.timestamp < this.ttl) {
+        return this.data;
+      }
+      return null;
+    },
+    set(data) {
+      this.data = data;
+      this.timestamp = Date.now();
+    },
+    clear() {
+      this.data = null;
+      this.timestamp = 0;
+    }
+  };
+  let portsInFlight = null;
+  let systemUsageInFlight = null;
+  let diskUsageInFlight = null;
 
   async function getSizesForPaths(paths) {
     const normPaths = paths.map(p => path.normalize(p));
@@ -238,16 +337,9 @@ function createPortService(options = {}) {
     }
   }
 
-  async function listPorts({ bypassCache = false } = {}) {
-    if (bypassCache) {
-      portsCache.clear();
-    }
-    const cached = portsCache.get();
-    if (cached !== null) {
-      return cached;
-    }
-
+  async function scanPorts() {
     let ports;
+    let primaryScanSucceeded = true;
     if (options.listPorts) {
       ports = await options.listPorts();
     } else {
@@ -264,8 +356,16 @@ function createPortService(options = {}) {
           commandLine: commandMap[p.pid] || 'Unknown command',
           workingDirectory: workingDirectoryMap[p.pid] || null,
         }));
-      } catch {
+      } catch (error) {
+        console.warn('[ports-mcp] Port scan degraded:', error && error.message ? error.message : 'lsof failed');
+        portScanStatus = {
+          state: 'degraded',
+          observedAt: new Date().toISOString(),
+          source: 'lsof',
+          warning: 'לא ניתן להשלים את סריקת הפורטים. התוצאה עשויה להיות חלקית.',
+        };
         ports = [];
+        primaryScanSucceeded = false;
       }
     }
 
@@ -287,43 +387,78 @@ function createPortService(options = {}) {
         ...enriched,
         cpu: metrics.cpu,
         memoryMb: metrics.memoryMb,
-        isSystem: p.isSystem !== undefined ? p.isSystem : isSystemProcess(enriched)
+        isSystem: p.isSystem !== undefined ? p.isSystem : isSystemProcess(enriched),
+        project: identifyProject(enriched),
       };
     }).sort((a, b) => a.port - b.port || a.pid - b.pid);
 
     if (results.length > MAX_PORTS_RETURNED) results.length = MAX_PORTS_RETURNED;
+    // A new successful scan supersedes an earlier degraded snapshot. Keeping the
+    // old state would make recovery look permanently broken to both API clients.
+    if (primaryScanSucceeded) {
+      portScanStatus = { state: 'ready', observedAt: new Date().toISOString(), source: 'lsof', warning: null };
+    }
     portsCache.set(results);
     return results;
   }
 
+  async function listPorts({ bypassCache = false } = {}) {
+    if (bypassCache) {
+      portsCache.clear();
+    }
+    const cached = portsCache.get();
+    if (cached !== null) {
+      return cached;
+    }
+    if (portsInFlight !== null) {
+      return portsInFlight;
+    }
+
+    portsInFlight = scanPorts();
+    try {
+      return await portsInFlight;
+    } finally {
+      portsInFlight = null;
+    }
+  }
+
+  function getPortScanStatus() {
+    return { ...portScanStatus };
+  }
+
   async function getProcessCommands(pids) {
     if (pids.length === 0) return {};
-    try {
-      const { stdout } = await runner.execFile('ps', ['-A', '-o', 'pid,command'], { allowNonZero: true });
-      const lines = stdout.split('\n');
-      const commandMap = {};
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        const match = trimmed.match(/^(\d+)\s+(.+)$/);
-        if (match) {
-          const pid = Number(match[1]);
-          const command = match[2];
-          commandMap[pid] = command;
-        }
-      }
-      const result = {};
-      for (const pid of pids) {
-        result[pid] = commandMap[pid] || 'Unknown command';
-      }
-      return result;
-    } catch (err) {
-      const entries = await Promise.all(pids.map(async (pid) => {
-        try { const { stdout } = await runner.execFile('ps', ['-p', String(pid), '-o', 'command='], { allowNonZero: true }); return [pid, stdout.trim() || 'Unknown command']; }
-        catch { return [pid, 'Unknown command']; }
-      }));
-      return Object.fromEntries(entries);
+    const result = Object.fromEntries(pids.map(pid => [pid, 'Unknown command']));
+    const batches = [];
+    for (let index = 0; index < pids.length; index += PROCESS_QUERY_BATCH_SIZE) {
+      batches.push(pids.slice(index, index + PROCESS_QUERY_BATCH_SIZE));
     }
+
+    await Promise.all(batches.map(async batch => {
+      try {
+        const { stdout } = await runner.execFile(
+          'ps',
+          ['-p', batch.join(','), '-o', 'pid=,command='],
+          { allowNonZero: true }
+        );
+        for (const line of String(stdout || '').split('\n')) {
+          const match = line.trim().match(/^(\d+)\s+(.+)$/);
+          if (match) result[Number(match[1])] = match[2];
+        }
+      } catch {
+        const entries = await Promise.all(batch.map(async pid => {
+          try {
+            const { stdout } = await runner.execFile('ps', ['-p', String(pid), '-o', 'command='], { allowNonZero: true });
+            return [pid, String(stdout || '').trim() || 'Unknown command'];
+          } catch {
+            return [pid, 'Unknown command'];
+          }
+        }));
+        for (const [pid, command] of entries) result[pid] = command;
+      }
+    }));
+
+    return result;
   }
 
   async function getProcessWorkingDirectories(pids) {
@@ -424,7 +559,7 @@ function createPortService(options = {}) {
     throw new PortManagerError('RESTART_NOT_IMPLEMENTED', 'restart_process_on_port is intentionally disabled; arbitrary shell restart is unsafe.', { status: 501 });
   }
 
-  async function getSystemUsage() {
+  async function sampleSystemUsage() {
     const totalBytes = os.totalmem();
     let usedBytes = totalBytes - os.freemem();
     let memoryPercentage = parseFloat(((usedBytes / totalBytes) * 100).toFixed(1));
@@ -463,7 +598,7 @@ function createPortService(options = {}) {
     }
     const cpuPercentage = totalDiff === 0 ? 0 : parseFloat(((1 - idleDiff / totalDiff) * 100).toFixed(1));
 
-    return {
+    const result = {
       cpu: cpuPercentage,
       memory: {
         usedBytes,
@@ -471,9 +606,28 @@ function createPortService(options = {}) {
         percentage: memoryPercentage
       }
     };
+    systemUsageCache.set(result);
+    return result;
   }
 
-  async function getDiskUsage() {
+  async function getSystemUsage() {
+    const cached = systemUsageCache.get();
+    if (cached !== null) {
+      return cached;
+    }
+    if (systemUsageInFlight !== null) {
+      return systemUsageInFlight;
+    }
+
+    systemUsageInFlight = sampleSystemUsage();
+    try {
+      return await systemUsageInFlight;
+    } finally {
+      systemUsageInFlight = null;
+    }
+  }
+
+  async function readDiskUsage() {
     const { stdout: diskStdout } = await runner.execFile('df', ['-kP', '/'], { allowNonZero: true });
     const diskLine = String(diskStdout || '').trim().split('\n').at(-1).trim().split(/\s+/);
     const totalKiB = Number(diskLine[1]);
@@ -485,12 +639,31 @@ function createPortService(options = {}) {
       throw new PortManagerError('STORAGE_UNAVAILABLE', 'Could not read disk usage', { status: 503 });
     }
 
-    return {
+    const result = {
       totalBytes: totalKiB * 1024,
       usedBytes: usedKiB * 1024,
       availableBytes: availableKiB * 1024,
       percentage,
     };
+    diskCache.set(result);
+    return result;
+  }
+
+  async function getDiskUsage() {
+    const cached = diskCache.get();
+    if (cached !== null) {
+      return cached;
+    }
+    if (diskUsageInFlight !== null) {
+      return diskUsageInFlight;
+    }
+
+    diskUsageInFlight = readDiskUsage();
+    try {
+      return await diskUsageInFlight;
+    } finally {
+      diskUsageInFlight = null;
+    }
   }
 
   async function getStorageUsage() {
@@ -576,6 +749,11 @@ function createPortService(options = {}) {
       };
 
       procObj.isSystem = isSystemProcess(procObj);
+      procObj.energyImpact = parseFloat((cpu * 1.2 + (procObj.memoryMb > 500 ? 5 : 1)).toFixed(1));
+      const humanInfo = enrichProcessHumanInfo(procObj);
+      procObj.humanTitle = humanInfo.humanTitle;
+      procObj.humanDescription = humanInfo.humanDescription;
+      procObj.safetyCategory = humanInfo.safetyCategory;
       processes.push(procObj);
     }
 
@@ -856,8 +1034,77 @@ function createPortService(options = {}) {
     return { ok: true, trashed: true, paths: targetPaths };
   }
 
+  async function getActivityMonitorSummary() {
+    const [usage, diskStorage, allProcesses, listeningPorts] = await Promise.all([
+      getSystemUsage(),
+      getStorageUsage(),
+      getSystemProcesses(),
+      listPorts({ bypassCache: false })
+    ]);
+
+    const activePortsCount = listeningPorts.length;
+    const cpuProcesses = [...allProcesses].sort((a, b) => b.cpu - a.cpu).slice(0, 25);
+    const memoryProcesses = [...allProcesses].sort((a, b) => b.memoryMb - a.memoryMb).slice(0, 25);
+    const energyProcesses = [...allProcesses].sort((a, b) => (b.energyImpact || 0) - (a.energyImpact || 0)).slice(0, 25);
+    const diskProcesses = [...allProcesses].sort((a, b) => b.memoryMb - a.memoryMb).slice(0, 25);
+
+    const portPidMap = new Map();
+    for (const p of listeningPorts) {
+      if (!portPidMap.has(p.pid)) {
+        portPidMap.set(p.pid, []);
+      }
+      portPidMap.get(p.pid).push(p.port);
+    }
+
+    const networkProcesses = allProcesses.filter(p => portPidMap.has(p.pid)).map(p => ({
+      ...p,
+      ports: portPidMap.get(p.pid)
+    })).concat(
+      allProcesses.filter(p => !portPidMap.has(p.pid)).slice(0, 15)
+    );
+
+    const memoryPressure = usage.memory.percentage > 85 ? 'HIGH' : usage.memory.percentage > 60 ? 'MEDIUM' : 'NORMAL';
+
+    return {
+      timestamp: new Date().toISOString(),
+      cpu: {
+        usagePercentage: usage.cpu,
+        activeProcessesCount: allProcesses.length,
+        topProcesses: cpuProcesses
+      },
+      memory: {
+        usedBytes: usage.memory.usedBytes,
+        totalBytes: usage.memory.totalBytes,
+        percentage: usage.memory.percentage,
+        pressure: memoryPressure,
+        topProcesses: memoryProcesses
+      },
+      energy: {
+        totalImpact: parseFloat(energyProcesses.reduce((acc, p) => acc + (p.energyImpact || 0), 0).toFixed(1)),
+        highImpactCount: energyProcesses.filter(p => (p.energyImpact || 0) > 10).length,
+        preventingSleepCount: allProcesses.filter(p => p.isSuspended === false && p.cpu > 5).length,
+        topProcesses: energyProcesses
+      },
+      disk: {
+        totalBytes: diskStorage.disk.totalBytes,
+        usedBytes: diskStorage.disk.usedBytes,
+        availableBytes: diskStorage.disk.availableBytes,
+        percentage: diskStorage.disk.percentage,
+        cacheKnownBytes: diskStorage.cache.knownBytes,
+        cacheItemsCount: diskStorage.cache.scannedItems,
+        topProcesses: diskProcesses
+      },
+      network: {
+        activePortsCount,
+        listeningPorts,
+        topProcesses: networkProcesses
+      }
+    };
+  }
+
   return {
     listPorts,
+    getPortScanStatus,
     findProcessByPort,
     killProcessOnPort,
     restartProcessOnPort,
@@ -869,7 +1116,8 @@ function createPortService(options = {}) {
     resumeProcess,
     killProcess,
     getCacheDetails,
-    trashCachePath
+    trashCachePath,
+    getActivityMonitorSummary
   };
 }
 

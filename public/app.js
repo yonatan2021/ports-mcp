@@ -13,6 +13,110 @@ let destructiveActionContext = null;
 let appUpdateReleaseUrl = null;
 let cacheItemsData = [];
 let appUpdateSupported = false;
+let lastBackgroundRefreshWarningAt = 0;
+
+function createResourceClient(fetchImpl) {
+  const inFlight = new Map();
+
+  function getJson(resourceKey, url, { force = false, options = {} } = {}) {
+    const currentRequest = inFlight.get(resourceKey);
+    if (currentRequest && !force) return currentRequest.promise;
+    if (currentRequest) currentRequest.controller.abort();
+
+    const controller = new AbortController();
+    let fetchPromise;
+    try {
+      fetchPromise = fetchImpl(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      fetchPromise = Promise.reject(error);
+    }
+
+    const entry = { controller, promise: null };
+    entry.promise = Promise.resolve(fetchPromise)
+      .then(response => {
+        if (!response.ok) {
+          const error = new Error(`Request failed (${response.status || 'unknown'})`);
+          error.status = response.status;
+          throw error;
+        }
+        return response.json();
+      })
+      .finally(() => {
+        if (inFlight.get(resourceKey) === entry) inFlight.delete(resourceKey);
+      });
+    inFlight.set(resourceKey, entry);
+    return entry.promise;
+  }
+
+  function abort(resourceKey) {
+    const currentRequest = inFlight.get(resourceKey);
+    if (currentRequest) currentRequest.controller.abort();
+  }
+
+  function abortAll() {
+    for (const request of inFlight.values()) request.controller.abort();
+  }
+
+  return { getJson, abort, abortAll };
+}
+
+function createViewPoller({ interval, isVisible, isViewActive, task }) {
+  let timeoutId = null;
+  let runningPromise = null;
+  let stopped = true;
+
+  function canRun() {
+    return isVisible() && isViewActive();
+  }
+
+  function runNow() {
+    if (!canRun()) return Promise.resolve(false);
+    if (runningPromise) return runningPromise;
+
+    let taskPromise;
+    try {
+      taskPromise = task();
+    } catch (error) {
+      taskPromise = Promise.reject(error);
+    }
+
+    runningPromise = Promise.resolve(taskPromise)
+      .then(() => true)
+      .finally(() => { runningPromise = null; });
+    return runningPromise;
+  }
+
+  function schedule() {
+    if (stopped || timeoutId !== null) return;
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      runNow().catch(error => {
+        if (error?.name !== 'AbortError') console.warn('Background refresh failed:', error);
+      }).finally(schedule);
+    }, interval);
+  }
+
+  function start() {
+    stopped = false;
+    schedule();
+  }
+
+  function stop() {
+    stopped = true;
+    if (timeoutId !== null) clearTimeout(timeoutId);
+    timeoutId = null;
+  }
+
+  return { start, stop, runNow };
+}
+
+// Activity Monitor tab filter state
+let activityFilters = {
+  cpu: { query: '', filter: 'all' },
+  memory: { query: '', filter: 'all' },
+  energy: { query: '', filter: 'all' },
+  disk: { query: '', filter: 'all' }
+};
 
 // Cache state variables
 let activeCacheFilter = 'all'; // 'all', 'SAFE_TO_CLEAR', 'NEEDS_CONFIRMATION', 'SYSTEM_PROTECTED'
@@ -20,8 +124,10 @@ let cacheSizeFilterVal = 'all'; // 'all', '100mb', '1gb'
 let cacheSearchQuery = '';
 let safeCleanWizardStep = 1;
 let safeCleanWizardReturnFocus = null;
-const POLL_INTERVAL = 8000; // 8 seconds
-const SYSTEM_USAGE_INTERVAL = 4000; // 4 seconds
+const POLL_INTERVAL = 10000; // 10 seconds
+const SYSTEM_USAGE_INTERVAL = 8000; // 8 seconds
+let lastPortsRenderFingerprint = '';
+let lastProcessesRenderFingerprint = '';
 const STORAGE_CACHE_KEY = 'ports-mcp-storage-cache-v1';
 const STORAGE_CACHE_TTL_MS = 300_000;
 const UPDATE_CACHE_KEY = 'ports-mcp-app-update-cache-v1';
@@ -29,9 +135,34 @@ const UPDATE_CACHE_TTL_MS = 86_400_000;
 const FOCUS_MODE_STORAGE_KEY = 'ports-mcp-focus-mode';
 const persistentCache = window.PersistentCache.createPersistentCache();
 const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const resourceClient = createResourceClient(window.fetch.bind(window));
+const ACTIVITY_TABS = new Set(['cpu', 'memory', 'energy', 'disk']);
+const getActiveTab = () => document.documentElement.dataset.activeTab || localStorage.getItem('activeTab') || 'ports';
+const activeViewPoller = createViewPoller({
+  interval: POLL_INTERVAL,
+  isVisible: () => !document.hidden,
+  isViewActive: () => getActiveTab() !== 'cache',
+  task: () => refreshCurrentView({ silent: true })
+});
+const systemUsagePoller = createViewPoller({
+  interval: SYSTEM_USAGE_INTERVAL,
+  isVisible: () => !document.hidden,
+  isViewActive: () => getActiveTab() === 'ports',
+  task: updateSystemUsage
+});
 
 // Self Port detection based on the loaded URL
 const selfPort = parseInt(window.location.port, 10) || 9999;
+
+// Electron & macOS environment detection
+if (window.portManager?.isElectron) {
+  document.documentElement.classList.add('is-electron');
+  if (window.portManager?.platform === 'darwin' || navigator.platform.includes('Mac')) {
+    document.documentElement.classList.add('is-mac');
+  }
+} else if (navigator.platform.includes('Mac')) {
+  document.documentElement.classList.add('is-mac');
+}
 
 // Dictionary of common ports with descriptions in Hebrew
 const PORT_DESCRIPTIONS = {
@@ -56,9 +187,9 @@ const PORT_DESCRIPTIONS = {
 
 // Dictionary of common process names and their Hebrew descriptions / friendly names
 const PROCESS_TRANSLATIONS = {
-  'node': 'סביבת ריצה Node.js (שרת פיתוח)',
-  'python': 'פייתון (שרת פיתוח / כלי מערכת)',
-  'python3': 'פייתון (שרת פיתוח / כלי מערכת)',
+  'node': 'Node.js — שרת פיתוח',
+  'python': 'פייתון — שרת פיתוח / כלי מערכת',
+  'python3': 'פייתון — שרת פיתוח / כלי מערכת',
   'postgres': 'מסד נתונים PostgreSQL',
   'postmaster': 'מסד נתונים PostgreSQL',
   'mongod': 'מסד נתונים MongoDB',
@@ -69,9 +200,9 @@ const PROCESS_TRANSLATIONS = {
   'httpd': 'שרת אינטרנט Apache',
   'apache': 'שרת אינטרנט Apache',
   'git': 'מערכת ניהול גרסאות Git',
-  'ruby': 'שפת רובי (שרת פיתוח)',
+  'ruby': 'רובי — שרת פיתוח',
   'go': 'יישום Go',
-  'java': 'יישום Java / שרת פיתוח',
+  'java': 'שירות Java — שרת פיתוח',
   'docker': 'סביבת Docker (מכולות)',
   'dockerd': 'סביבת Docker (מכולות)',
   'com.docker.backend': 'מנגנון הליבה של Docker',
@@ -302,6 +433,7 @@ function getListenerInfo(portObj) {
 const elements = {
   tableBody: document.getElementById('ports-table-body'),
   refreshBtn: document.getElementById('refresh-btn'),
+  refreshStatus: document.getElementById('refresh-status'),
   focusModeBtn: document.getElementById('focus-mode-btn'),
   quickActionSearch: document.getElementById('quick-action-search'),
   quickActionResolve: document.getElementById('quick-action-resolve'),
@@ -431,8 +563,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
   setFocusMode(localStorage.getItem(FOCUS_MODE_STORAGE_KEY) === 'true', { announce: false });
   fetchAppInfo();
-  updateSystemUsage();
-  startSystemUsagePolling();
   setupRecentActions();
 
   const savedTab = localStorage.getItem('activeTab') || 'ports';
@@ -440,30 +570,45 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function switchTab(tabId) {
-  const isNewTab = localStorage.getItem('activeTab') !== tabId;
-  if (tabId === 'ports') {
-    if (elements.tabBtnPorts) elements.tabBtnPorts.classList.add('active');
-    if (elements.tabBtnCache) elements.tabBtnCache.classList.remove('active');
-    if (elements.viewPorts) elements.viewPorts.classList.remove('hidden');
-    if (elements.viewCache) elements.viewCache.classList.add('hidden');
+  const allTabs = ['ports', 'cpu', 'memory', 'energy', 'disk', 'cache'];
+  const targetTab = allTabs.includes(tabId) ? tabId : 'ports';
+  const isNewTab = localStorage.getItem('activeTab') !== targetTab;
 
-    localStorage.setItem('activeTab', 'ports');
-    document.documentElement.dataset.activeTab = 'ports';
-    fetchPorts();
+  allTabs.forEach(t => {
+    const btn = document.getElementById(`tab-btn-${t}`);
+    if (btn) btn.classList.toggle('active', t === targetTab);
+    const view = document.getElementById(`view-${t}`);
+    if (view) view.classList.toggle('hidden', t !== targetTab);
+  });
+
+  localStorage.setItem('activeTab', targetTab);
+  document.documentElement.dataset.activeTab = targetTab;
+
+  if (targetTab === 'ports') {
+    fetchPorts({ force: true });
     startPolling();
-  } else if (tabId === 'cache') {
-    if (elements.tabBtnPorts) elements.tabBtnPorts.classList.remove('active');
-    if (elements.tabBtnCache) elements.tabBtnCache.classList.add('active');
-    if (elements.viewPorts) elements.viewPorts.classList.add('hidden');
-    if (elements.viewCache) elements.viewCache.classList.remove('hidden');
-
-    localStorage.setItem('activeTab', 'cache');
-    document.documentElement.dataset.activeTab = 'cache';
+    updateSystemUsage({ force: true });
+    startSystemUsagePolling();
+  } else if (targetTab === 'cache') {
     stopPolling();
+    stopSystemUsagePolling();
     updateStorageUsage();
+  } else {
+    stopSystemUsagePolling();
+    fetchActivityMonitorTab(targetTab, { force: true });
+    startPolling();
   }
 
-  if (isNewTab) announceUiStatus(tabId === 'ports' ? 'עברת לתצוגת פורטים ותהליכים' : 'עברת לתצוגת ניקוי Cache');
+  const tabLabels = {
+    ports: 'רשת ופורטים',
+    cpu: 'מעבד',
+    memory: 'זיכרון',
+    energy: 'צריכה',
+    disk: 'כונן',
+    cache: 'ניקוי Cache'
+  };
+
+  if (isNewTab) announceUiStatus(`עברת לתצוגת ${tabLabels[targetTab] || targetTab}`);
 }
 
 function announceUiStatus(message) {
@@ -476,6 +621,18 @@ function setButtonBusy(button, isBusy, statusMessage) {
   button.toggleAttribute('aria-busy', isBusy);
   button.disabled = isBusy;
   if (statusMessage) announceUiStatus(statusMessage);
+}
+
+function setRefreshState(isRefreshing, message = '') {
+  document.documentElement.classList.toggle('is-refreshing', isRefreshing);
+  if (elements.refreshStatus) {
+    elements.refreshStatus.textContent = message || (isRefreshing ? 'מעדכן נתונים…' : 'הנתונים מעודכנים');
+  }
+}
+
+function markDataFresh() {
+  elements.tableBody?.classList.remove('data-refreshed');
+  requestAnimationFrame(() => elements.tableBody?.classList.add('data-refreshed'));
 }
 
 function setFocusMode(enabled, { announce = true } = {}) {
@@ -699,15 +856,7 @@ function setupEventListeners() {
   elements.updateButton.addEventListener('click', applyAppUpdate);
 
   // Refresh button
-  elements.refreshBtn.addEventListener('click', async () => {
-    setButtonBusy(elements.refreshBtn, true, 'מרענן נתוני מערכת…');
-    try {
-      await Promise.all([fetchPorts(), updateStorageUsage()]);
-      announceUiStatus('נתוני המערכת עודכנו');
-    } finally {
-      setButtonBusy(elements.refreshBtn, false);
-    }
-  });
+  elements.refreshBtn.addEventListener('click', () => runManualRefresh());
   elements.storageRefreshBtn.addEventListener('click', async () => {
     setButtonBusy(elements.storageRefreshBtn, true, 'סורק את קבצי ה-Cache…');
     try {
@@ -727,12 +876,64 @@ function setupEventListeners() {
   });
 
   // Sidebar Tabs
-  if (elements.tabBtnPorts) {
-    elements.tabBtnPorts.addEventListener('click', () => switchTab('ports'));
+  ['ports', 'cpu', 'memory', 'energy', 'disk', 'cache'].forEach(tabName => {
+    const btn = document.getElementById(`tab-btn-${tabName}`);
+    if (btn) {
+      btn.addEventListener('click', () => switchTab(tabName));
+    }
+  });
+
+  const aiSummaryBtn = document.getElementById('ai-summary-btn');
+  if (aiSummaryBtn) {
+    aiSummaryBtn.addEventListener('click', copyAiSummary);
   }
-  if (elements.tabBtnCache) {
-    elements.tabBtnCache.addEventListener('click', () => switchTab('cache'));
-  }
+
+  ['cpu', 'memory', 'energy', 'disk'].forEach(tabName => {
+    const input = document.getElementById(`${tabName}-search-input`);
+    if (input) {
+      input.addEventListener('input', (e) => {
+        const query = e.target.value.toLowerCase().trim();
+        activityFilters[tabName].query = query;
+        applyActivityFilters(tabName);
+      });
+    }
+
+    const filterTabsContainer = document.querySelector(`.${tabName}-filter-tabs`);
+    if (filterTabsContainer) {
+      filterTabsContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.filter-tab');
+        if (!btn) return;
+        const filterVal = btn.getAttribute(`data-${tabName}-filter`) || btn.dataset.filter || 'all';
+        filterTabsContainer.querySelectorAll('.filter-tab').forEach(b => b.classList.toggle('active', b === btn));
+        activityFilters[tabName].filter = filterVal;
+        applyActivityFilters(tabName);
+      });
+    }
+  });
+
+  // Global search shortcut (⌘F / Ctrl+F or '/')
+  document.addEventListener('keydown', (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.code === 'KeyR') {
+      event.preventDefault();
+      runManualRefresh();
+      return;
+    }
+    if (event.metaKey && event.code === 'Comma') {
+      event.preventDefault();
+      window.SafetySettings?.open();
+      return;
+    }
+    const e = event;
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault();
+      focusCurrentTabSearch();
+    } else if (e.key === '/') {
+      e.preventDefault();
+      focusCurrentTabSearch();
+    }
+  });
+
   setupTouchTabNavigation();
 
   // Search input
@@ -956,6 +1157,7 @@ function setupEventListeners() {
 
 function setupTouchTabNavigation() {
   let touchStart = null;
+  const touchTabOrder = ['ports', 'cpu', 'memory', 'energy', 'disk', 'cache'];
   document.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch' || event.target.closest('input, textarea, select, button, a, [role="dialog"]')) return;
     touchStart = { x: event.clientX, y: event.clientY };
@@ -970,35 +1172,79 @@ function setupTouchTabNavigation() {
     if (!elements.confirmModal.classList.contains('hidden') || !elements.detailsModal.classList.contains('hidden')) return;
 
     const activeTab = localStorage.getItem('activeTab') || 'ports';
-    const nextTab = deltaX < 0 ? 'cache' : 'ports';
-    if (nextTab !== activeTab) switchTab(nextTab);
+    const currentIndex = touchTabOrder.indexOf(activeTab);
+    const isRtl = document.documentElement.dir === 'rtl';
+    const direction = (deltaX > 0) === isRtl ? 1 : -1;
+    const nextTab = touchTabOrder[currentIndex + direction];
+    if (nextTab) switchTab(nextTab);
   }, { passive: true });
 }
 
 // --- POLLING LOGIC ---
 function startPolling() {
-  stopPolling();
-  pollIntervalId = setInterval(fetchPortsSilent, POLL_INTERVAL);
+  activeViewPoller.start();
+  pollIntervalId = true;
 }
 
 function stopPolling() {
-  if (pollIntervalId) {
-    clearInterval(pollIntervalId);
-    pollIntervalId = null;
-  }
+  activeViewPoller.stop();
+  pollIntervalId = null;
 }
 
 function startSystemUsagePolling() {
-  stopSystemUsagePolling();
-  systemUsageIntervalId = setInterval(updateSystemUsage, SYSTEM_USAGE_INTERVAL);
+  systemUsagePoller.start();
+  systemUsageIntervalId = true;
 }
 
 function stopSystemUsagePolling() {
-  if (systemUsageIntervalId) {
-    clearInterval(systemUsageIntervalId);
-    systemUsageIntervalId = null;
+  systemUsagePoller.stop();
+  systemUsageIntervalId = null;
+}
+
+function refreshCurrentView({ force = false, silent = false } = {}) {
+  const activeTab = getActiveTab();
+  if (activeTab === 'ports') {
+    const viewRefresh = silent ? fetchPortsSilent({ force }) : fetchPorts({ force });
+    return force ? Promise.all([viewRefresh, updateSystemUsage({ force: true })]) : viewRefresh;
+  }
+  if (activeTab === 'cache') return updateStorageUsage({ force });
+  if (ACTIVITY_TABS.has(activeTab)) return fetchActivityMonitorTab(activeTab, { force });
+  return Promise.resolve();
+}
+
+async function runManualRefresh() {
+  setButtonBusy(elements.refreshBtn, true, 'מרענן את התצוגה הנוכחית…');
+  setRefreshState(true);
+  try {
+    await refreshCurrentView({ force: true });
+    announceUiStatus('התצוגה עודכנה');
+    setRefreshState(false, 'עודכן עכשיו');
+  } catch (error) {
+    setRefreshState(false, 'לא ניתן לעדכן כרגע');
+    throw error;
+  } finally {
+    setButtonBusy(elements.refreshBtn, false);
   }
 }
+
+// Pause all background polling when page/tab is hidden or minimized
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopPolling();
+    stopSystemUsagePolling();
+  } else {
+    const activeTab = getActiveTab();
+    if (activeTab !== 'cache') {
+      startPolling();
+    }
+    if (activeTab === 'ports') {
+      startSystemUsagePolling();
+      refreshCurrentView({ force: true });
+    } else if (ACTIVITY_TABS.has(activeTab)) {
+      refreshCurrentView({ force: true });
+    }
+  }
+});
 
 // --- DATA DEDUPLICATION LOGIC ---
 // Merges IPv4 & IPv6 duplicate rows for the same port and PID
@@ -1060,21 +1306,30 @@ function aggregatePorts(ports) {
 }
 
 // --- DATA FETCHING ---
-async function fetchPorts() {
+function handlePortScanState(data) {
+  if (data.scan?.state === 'degraded') {
+    announceUiStatus(data.scan.warning || 'סריקת הפורטים חלקית. נסה לרענן שוב.');
+    showToast(data.scan.warning || 'סריקת הפורטים חלקית. נסה לרענן שוב.', 'warning');
+  }
+}
+
+async function fetchPorts({ force = true } = {}) {
   if (activeFilter === 'system-resources') {
     return fetchSystemProcesses();
   }
 
   renderTableSkeleton('סורק פורטים פעילים ב-macOS…');
+  lastPortsRenderFingerprint = '';
   elements.emptyState.classList.add('hidden');
 
   try {
-    const response = await fetch('/api/ports?bypassCache=true');
-    if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
-    const data = await response.json();
+    const data = await resourceClient.getJson('ports', '/api/ports?bypassCache=true', { force });
     portsData = data.ports || [];
+    handlePortScanState(data);
     applyFilters();
+    markDataFresh();
   } catch (err) {
+    if (err?.name === 'AbortError') return;
     console.error(err);
     elements.tableBody.innerHTML = `
       <tr>
@@ -1088,7 +1343,7 @@ async function fetchPorts() {
 }
 
 // Silent refresh in the background (no full loading state)
-async function fetchPortsSilent() {
+async function fetchPortsSilent({ force = false } = {}) {
   // Do not poll if a modal is visible
   if (!elements.confirmModal.classList.contains('hidden') || !elements.detailsModal.classList.contains('hidden')) {
     return;
@@ -1097,31 +1352,39 @@ async function fetchPortsSilent() {
   try {
     const isSystemRes = activeFilter === 'system-resources';
     const url = isSystemRes ? '/api/system/processes' : '/api/ports';
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Silent fetch failed');
-    const data = await response.json();
+    const data = await resourceClient.getJson(isSystemRes ? 'system-processes' : 'ports', url, { force });
     if (isSystemRes) {
       systemProcessesData = data.processes || [];
     } else {
       portsData = data.ports || [];
+      handlePortScanState(data);
     }
     applyFilters();
+    markDataFresh();
   } catch (err) {
+    if (err?.name === 'AbortError') return;
     console.warn('Silent refresh failed:', err);
+    // Preserve the last good snapshot, but never imply that it is current.
+    const now = Date.now();
+    if (now - lastBackgroundRefreshWarningAt > 30_000) {
+      lastBackgroundRefreshWarningAt = now;
+      announceUiStatus('הנתונים המוצגים אינם מעודכנים כרגע; החיבור לשרת המקומי נכשל.');
+      showToast('הנתונים האחרונים נשמרו, אך הרענון נכשל. נסה לרענן שוב.', 'warning');
+    }
   }
 }
 
-async function fetchSystemProcesses() {
+async function fetchSystemProcesses({ force = true } = {}) {
   renderTableSkeleton('סורק תהליכי מערכת ומשאבים ב-macOS…');
+  lastProcessesRenderFingerprint = '';
   elements.emptyState.classList.add('hidden');
 
   try {
-    const response = await fetch('/api/system/processes');
-    if (!response.ok) throw new Error('שגיאה בתקשורת עם השרת');
-    const data = await response.json();
+    const data = await resourceClient.getJson('system-processes', '/api/system/processes', { force });
     systemProcessesData = data.processes || [];
     applyFilters();
   } catch (err) {
+    if (err?.name === 'AbortError') return;
     console.error(err);
     elements.tableBody.innerHTML = `
       <tr>
@@ -1300,6 +1563,12 @@ function sortAndRender() {
 }
 
 function renderSystemProcessesTable() {
+  const fingerprint = JSON.stringify(filteredProcesses.map(proc => `${proc.pid}:${proc.cpu}:${proc.memoryMb}:${proc.isSuspended}`)) + `_${currentSort.column}_${currentSort.order}`;
+  if (lastProcessesRenderFingerprint === fingerprint) {
+    return;
+  }
+  lastProcessesRenderFingerprint = fingerprint;
+
   elements.tableBody.innerHTML = '';
 
   if (filteredProcesses.length === 0) {
@@ -1387,6 +1656,39 @@ function renderSystemProcessesTable() {
   });
 }
 
+function detectDevStack(portObj) {
+  if (!portObj) return null;
+  const port = Number(portObj.port || (portObj.ports && portObj.ports[0]));
+  const processName = (portObj.processName || portObj.name || '').toLowerCase();
+  const cmd = (portObj.commandLine || portObj.cmd || '').toLowerCase();
+
+  if (port === 5173 || port === 5174 || cmd.includes('vite') || processName.includes('vite')) {
+    return { name: 'Vite', class: 'stack-vite', icon: '⚡' };
+  }
+  if (port === 3000 || port === 3001 || cmd.includes('next') || processName.includes('next')) {
+    return { name: 'Next.js', class: 'stack-next', icon: '▲' };
+  }
+  if (port === 8080 || port === 8000 || port === 5000 || cmd.includes('python') || processName.includes('python') || cmd.includes('uvicorn') || cmd.includes('fastapi') || cmd.includes('flask')) {
+    return { name: 'Python', class: 'stack-python', icon: '🐍' };
+  }
+  if (cmd.includes('node') || processName.includes('node') || cmd.includes('express')) {
+    return { name: 'Node.js', class: 'stack-node', icon: '🟢' };
+  }
+  if (port === 5432 || cmd.includes('postgres') || processName.includes('postgres')) {
+    return { name: 'Postgres', class: 'stack-postgres', icon: '🐘' };
+  }
+  if (port === 6379 || cmd.includes('redis') || processName.includes('redis')) {
+    return { name: 'Redis', class: 'stack-redis', icon: '🔴' };
+  }
+  if (port === 27017 || cmd.includes('mongo')) {
+    return { name: 'MongoDB', class: 'stack-node', icon: '🍃' };
+  }
+  if (cmd.includes('docker') || processName.includes('docker')) {
+    return { name: 'Docker', class: 'stack-docker', icon: '🐳' };
+  }
+  return null;
+}
+
 // --- RENDERING ---
 function renderTable() {
   const tableView = document.getElementById('table-view-wrapper');
@@ -1414,6 +1716,22 @@ function renderTable() {
   if (activeFilter === 'system-resources') {
     return renderSystemProcessesTable();
   }
+
+  const fingerprint = JSON.stringify(filteredPorts.map(p => ({
+    port: p.port,
+    pid: p.pid || (p.pids ? p.pids.join(',') : ''),
+    cpu: p.cpu,
+    memoryMb: p.memoryMb,
+    address: p.address,
+    isSystem: p.isSystem,
+    commandLine: p.commandLine,
+    user: p.user,
+  }))) + `_${viewMode}_${currentSort.column}_${currentSort.order}`;
+  if (lastPortsRenderFingerprint === fingerprint) {
+    return;
+  }
+  lastPortsRenderFingerprint = fingerprint;
+
   elements.tableBody.innerHTML = '';
 
   if (filteredPorts.length === 0) {
@@ -1800,22 +2118,20 @@ function updateProgressRing(circleElement, percentage) {
   const offset = circumference - (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
   circleElement.style.strokeDashoffset = offset;
 
-  // Update progress color based on usage
+  // Update progress color based on usage using CSS variables for theme consistency
   if (percentage > 80) {
-    circleElement.style.stroke = '#ff4b4b'; // Rose Red
+    circleElement.style.stroke = 'var(--color-danger)';
   } else if (percentage > 50) {
-    circleElement.style.stroke = '#f59e0b'; // Amber
+    circleElement.style.stroke = 'var(--color-warning)';
   } else {
-    circleElement.style.stroke = 'var(--color-primary)'; // Ice Cyan
+    circleElement.style.stroke = 'var(--color-primary)';
   }
 }
 
-async function updateSystemUsage() {
-  updateDiskUsage();
+async function updateSystemUsage({ force = false } = {}) {
+  const diskUpdate = updateDiskUsage({ force });
   try {
-    const res = await fetch('/api/system/usage');
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await resourceClient.getJson('system-usage', '/api/system/usage', { force });
 
     // Update metric display
     if (elements.statusTextCpu) {
@@ -1849,7 +2165,12 @@ async function updateSystemUsage() {
       }
     }
   } catch (err) {
+    if (err?.name === 'AbortError') return;
     console.error('Failed to update system metrics:', err);
+  } finally {
+    // A manual refresh should not report completion while the paired disk
+    // measurement is still in flight.
+    await diskUpdate;
   }
 }
 
@@ -1865,12 +2186,11 @@ function renderDiskUsage(disk) {
   }
 }
 
-async function updateDiskUsage() {
+async function updateDiskUsage({ force = false } = {}) {
   try {
-    const response = await fetch('/api/system/disk');
-    if (!response.ok) return;
-    renderDiskUsage(await response.json());
+    renderDiskUsage(await resourceClient.getJson('disk', '/api/system/disk', { force }));
   } catch (err) {
+    if (err?.name === 'AbortError') return;
     console.warn('Failed to update disk metric:', err);
   }
 }
@@ -2086,17 +2406,16 @@ async function updateStorageUsage({ force = false } = {}) {
   `;
 
   try {
-    const [diskRes, cacheRes] = await Promise.all([
-      fetch('/api/system/disk'),
-      fetch('/api/system/cache'),
+    const [disk, { items }] = await Promise.all([
+      resourceClient.getJson('disk', '/api/system/disk', { force }),
+      resourceClient.getJson('cache', '/api/system/cache', { force }),
     ]);
-    if (!diskRes.ok || !cacheRes.ok) throw new Error('Storage metrics unavailable');
-    const [disk, { items }] = await Promise.all([diskRes.json(), cacheRes.json()]);
     const usage = { disk, items };
     persistentCache.write(STORAGE_CACHE_KEY, usage);
     renderStorageUsage(usage);
     renderDiskUsage(disk);
   } catch (err) {
+    if (err?.name === 'AbortError') return;
     console.warn('Failed to update storage/cache metrics:', err);
     if (!staleUsage) elements.cacheFindings.textContent = 'לא ניתן לסרוק Cache כרגע.';
   } finally {
@@ -2350,22 +2669,11 @@ async function renderWarningBanner(usage) {
     }
 
     if (elements.quickCleanBtn) {
-      elements.quickCleanBtn.onclick = async () => {
-        const confirmMessage = `האם אתה בטוח שברצונך לסגור את כל (${heavyProcs.length}) התהליכים הכבדים שזוהו?\n` +
-          heavyProcs.map(p => `- ${p.processName} (PID: ${p.pid})`).join('\n');
-        if (confirm(confirmMessage)) {
-          for (const proc of heavyProcs) {
-            await executeKill(proc.pid, '-');
-          }
-          showToast('בוצעה אופטימיזציה מהירה לתהליכים הכבדים.', 'success');
-          updateSystemUsage();
-          if (activeFilter === 'system-resources') {
-            fetchSystemProcesses();
-          } else {
-            fetchPorts();
-          }
-        }
-      };
+      // Bulk termination cannot meet the per-process safety confirmation policy.
+      // Keep recommendations actionable through the individual, inspected rows.
+      elements.quickCleanBtn.classList.add('hidden');
+      elements.quickCleanBtn.setAttribute('aria-hidden', 'true');
+      elements.quickCleanBtn.onclick = null;
     }
   } catch (err) {
     console.error('Error rendering warning banner:', err);
@@ -2446,17 +2754,25 @@ function formatBytes(bytes) {
 
 function getProcessIcon(processName) {
   const name = (processName || '').toLowerCase();
-  if (name.includes('node') || name.includes('npm')) return '🟢';
-  if (name.includes('python')) return '🐍';
-  if (name.includes('docker') || name.includes('dockerd')) return '🐳';
-  if (name.includes('java')) return '☕';
-  if (name.includes('postgres') || name.includes('pg')) return '🐘';
-  if (name.includes('redis')) return '💾';
-  if (name.includes('chrome') || name.includes('chromium')) return '🌐';
-  if (name.includes('go') || name.includes('gopls')) return '🐹';
-  if (name.includes('ruby')) return '💎';
-  if (name.includes('port-manager') || name.includes('server.js')) return '🔌';
-  return '⚙️';
+  if (name.includes('node') || name.includes('npm')) {
+    return `<span class="app-icon-badge app-icon-dev" title="Node.js"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>`;
+  }
+  if (name.includes('python')) {
+    return `<span class="app-icon-badge app-icon-python" title="Python"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>`;
+  }
+  if (name.includes('docker') || name.includes('dockerd')) {
+    return `<span class="app-icon-badge app-icon-docker" title="Docker"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3v4M8 3v4M12 3v4"/></svg></span>`;
+  }
+  if (name.includes('postgres') || name.includes('pg') || name.includes('redis') || name.includes('mysql') || name.includes('mongo')) {
+    return `<span class="app-icon-badge app-icon-db" title="Database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>`;
+  }
+  if (name.includes('chrome') || name.includes('chromium') || name.includes('firefox') || name.includes('safari')) {
+    return `<span class="app-icon-badge app-icon-browser" title="Browser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>`;
+  }
+  if (name.includes('port-manager') || name.includes('server.js')) {
+    return `<span class="app-icon-badge app-icon-self" title="Port Manager"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M12 2v8M12 14v8M2 12h8M14 12h8"/></svg></span>`;
+  }
+  return `<span class="app-icon-badge app-icon-system" title="System Process"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg></span>`;
 }
 
 function showToast(message, type = 'info') {
@@ -2512,13 +2828,14 @@ function createSimplePortSection(category, createRow) {
     <button class="simple-port-section-toggle" id="${category.id}-toggle" type="button"
       aria-expanded="${isExpanded}" aria-controls="${category.id}-content">
       <span class="simple-port-section-summary">
-        <span class="simple-port-section-title">${category.title}</span>
+        <span class="simple-port-section-title">${escapeHtml(category.title)}</span>
+        ${category.subtitle ? `<span class="simple-port-section-subtitle">${escapeHtml(category.subtitle)}</span>` : ''}
         <span class="simple-port-section-count">${category.ports.length} פעילים</span>
         ${metrics.cpu > 0 || metrics.memoryMb > 0 ? `
         <span class="simple-port-section-metrics" dir="ltr">
-          ${metrics.cpu > 0 ? `<span class="section-metric-cpu">⚡ ${metrics.cpu}%</span>` : ''}
+          ${metrics.cpu > 0 ? `<span class="section-metric-cpu">CPU: ${metrics.cpu}%</span>` : ''}
           ${metrics.cpu > 0 && metrics.memoryMb > 0 ? '<span class="section-metric-sep">·</span>' : ''}
-          ${metrics.memoryMb > 0 ? `<span class="section-metric-mem">💾 ${metrics.memoryMb} MB</span>` : ''}
+          ${metrics.memoryMb > 0 ? `<span class="section-metric-mem">${metrics.memoryMb} MB</span>` : ''}
         </span>` : ''}
       </span>
       <svg class="simple-port-section-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2562,12 +2879,17 @@ function createSimplePortRow(portObj) {
   const isAggregate = portObj.isAggregate === true;
   const killDisabled = isAggregate || isSelf || isSystemProcess || isReadOnlyMode;
   const processIcon = getProcessIcon(portObj.processName);
-  const appName = getFriendlyAppName(portObj);
+  const project = portObj.project || null;
+  const appName = project?.name || getFriendlyAppName(portObj);
   const sourceInfo = getSourceInfo(portObj);
   const listenerInfo = getListenerInfo(portObj);
+  const actionRisk = assessProcessRisk(portObj);
   const cpu = Number(portObj.cpu || 0).toFixed(1);
   const memoryMb = Number(portObj.memoryMb || 0).toFixed(1);
-  const portDesc = PORT_DESCRIPTIONS[portNumber] || (isSystemProcess ? 'שירות מערכת macOS' : 'תהליך ריצה');
+  const projectDetail = project?.framework
+    ? `${project.framework}${project.confidence === 'low' ? ' · זיהוי משוער' : ''}`
+    : '';
+  const portDesc = projectDetail || PORT_DESCRIPTIONS[portNumber] || (isSystemProcess ? 'שירות מערכת macOS' : 'תהליך ריצה');
 
   const hasSourcePath = sourceInfo.path && sourceInfo.path !== 'לא זמין' && sourceInfo.path !== '/';
   let sourceDisplay = sourceInfo.label;
@@ -2576,22 +2898,24 @@ function createSimplePortRow(portObj) {
     sourceDisplay = pathSegments.slice(-2).join('/') || sourceInfo.path;
   }
 
-  const safetyBadgeHtml = listenerInfo.label === 'מקומי בלבד'
-    ? '<span class="simple-port-safety safe">🔒 מקומי בלבד</span>'
-    : '<span class="simple-port-safety exposed">🌐 פתוח לרשת</span>';
+  const exposureBadgeHtml = listenerInfo.label === 'מקומי בלבד'
+    ? '<span class="simple-port-safety safe">גישה: רק מהמחשב הזה</span>'
+    : '<span class="simple-port-safety exposed">גישה: זמינה ברשת</span>';
+  const riskShortLabel = actionRisk.level === 'low' ? 'אפשר לעצור בבטחה' : actionRisk.level === 'medium' ? 'בדיקה לפני עצירה' : 'עצירה רגישה';
+  const projectLabel = project?.location ? `פרויקט: ${project.name}` : (isSystemProcess ? 'רכיב macOS' : 'שירות מקומי');
 
-  const isHttpPort = [80, 443, 3000, 5000, 5173, 8000, 8080, 9000].includes(portNumber);
+  const isHttpPort = (portNumber >= 80 && portNumber <= 65535 && !isSystemProcess) || [80, 443, 3000, 5000, 5173, 8000, 8080, 9000, 4200, 11434].includes(portNumber);
   const openBrowserBtnHtml = isHttpPort && !isSystemProcess
-    ? `<a href="${portNumber === 443 ? 'https' : 'http'}://localhost:${portNumber}" target="_blank" rel="noopener noreferrer" class="simple-port-browser-link">פתח בדפדפן</a>`
+    ? `<a href="${portNumber === 443 ? 'https' : 'http'}://localhost:${portNumber}" target="_blank" rel="noopener noreferrer" class="btn-open-browser" title="פתח שרת מקומי בטאב חדש בדפדפן">פתח בדפדפן ↗</a>`
     : '';
 
   let actionBtnHtml = '';
   if (isSelf) {
-    actionBtnHtml = '<span class="simple-port-protected">🔌 מנהל הפורטים (פעיל)</span>';
+    actionBtnHtml = '<span class="simple-port-protected">מוגן: זהו מנהל הפורטים</span>';
   } else if (isSystemProcess) {
-    actionBtnHtml = '<span class="simple-port-protected">🛡️ מוגן על ידי macOS</span>';
+    actionBtnHtml = '<span class="simple-port-protected">מוגן על ידי macOS</span>';
   } else {
-    actionBtnHtml = `<button class="simple-port-stop-btn port-card-kill-btn" type="button" ${killDisabled ? 'disabled' : ''} title="${killDisabled ? 'סגירה חסומה' : 'עצור פעילות אפליקציה'}">עצור אפליקציה</button>`;
+    actionBtnHtml = `<button class="simple-port-stop-btn port-card-kill-btn" type="button" ${killDisabled ? 'disabled' : ''} title="${escapeHtml(actionRisk.explanation)}">עצור שירות</button>`;
   }
 
   row.className = `simple-port-row${isSelf ? ' is-self' : ''}${isSystemProcess ? ' is-system' : ''}`;
@@ -2601,16 +2925,17 @@ function createSimplePortRow(portObj) {
       <span class="simple-port-row-icon" aria-hidden="true">${processIcon}</span>
       <div class="simple-port-row-identity">
         <strong class="simple-port-row-title" dir="ltr">${escapeHtml(appName)}</strong>
-        <span class="simple-port-row-description">${escapeHtml(portDesc)}</span>
+        <span class="simple-port-row-description">${escapeHtml(projectLabel)} · ${escapeHtml(portDesc)}</span>
       </div>
       <span class="simple-port-port" dir="ltr">פורט ${portText}</span>
     </div>
     <div class="simple-port-row-meta">
-      ${safetyBadgeHtml}
-      <span class="simple-port-meta-item" title="${escapeHtml(sourceInfo.path)}" ${hasSourcePath ? 'dir="ltr"' : ''}>📁 ${escapeHtml(sourceDisplay)}</span>
+      ${exposureBadgeHtml}
+      <span class="simple-port-risk risk-${actionRisk.level}" title="${escapeHtml(actionRisk.explanation)}">${riskShortLabel}</span>
+      <span class="simple-port-meta-item" title="${escapeHtml(project?.location || sourceInfo.path)}" ${(project?.location || hasSourcePath) ? 'dir="ltr"' : ''}>${escapeHtml(project?.location ? project.location.split('/').filter(Boolean).slice(-2).join('/') : sourceDisplay)}</span>
       <span class="simple-port-meta-item" dir="ltr">PID ${pidText}</span>
-      ${Number(cpu) > 0 ? `<span class="simple-port-meta-item metric-cpu" dir="ltr">⚡ ${cpu}%</span>` : ''}
-      ${Number(memoryMb) > 0 ? `<span class="simple-port-meta-item metric-memory" dir="ltr">💾 ${memoryMb} MB</span>` : ''}
+      ${Number(cpu) > 0 ? `<span class="simple-port-meta-item metric-cpu" dir="ltr">CPU ${cpu}%</span>` : ''}
+      ${Number(memoryMb) > 0 ? `<span class="simple-port-meta-item metric-memory" dir="ltr">${memoryMb} MB</span>` : ''}
     </div>
     <div class="simple-port-row-actions">
       ${openBrowserBtnHtml}
@@ -2634,7 +2959,7 @@ function createSimpleSystemProcessRow(process) {
   const isProtected = process.isSystem === true;
   const status = process.isSuspended ? 'מושהה' : 'פעיל';
   const actionHtml = isProtected
-    ? '<span class="simple-port-protected">🔒 מוגן מערכת</span>'
+    ? '<span class="simple-port-protected">מוגן מערכת</span>'
     : `<button class="simple-port-pause-btn ${process.isSuspended ? 'btn-resume-simple' : 'btn-pause-simple'}" type="button">${process.isSuspended ? 'המשך' : 'השהיה'}</button>
        <button class="simple-port-stop-btn btn-kill-proc" type="button" ${isReadOnlyMode ? 'disabled' : ''}>כבה תהליך</button>`;
 
@@ -2651,8 +2976,8 @@ function createSimpleSystemProcessRow(process) {
     <div class="simple-port-row-meta">
       <span class="simple-port-safety ${process.isSuspended ? 'exposed' : 'safe'}">סטטוס: ${status}</span>
       <span class="simple-port-meta-item" dir="ltr">PID ${escapeHtml(String(process.pid))}</span>
-      ${Number(process.cpu || 0) > 0 ? `<span class="simple-port-meta-item metric-cpu" dir="ltr">⚡ ${Number(process.cpu || 0).toFixed(1)}%</span>` : ''}
-      ${Number(process.memoryMb || 0) > 0 ? `<span class="simple-port-meta-item metric-memory" dir="ltr">💾 ${Number(process.memoryMb || 0).toFixed(1)} MB</span>` : ''}
+      ${Number(process.cpu || 0) > 0 ? `<span class="simple-port-meta-item metric-cpu" dir="ltr">CPU ${Number(process.cpu || 0).toFixed(1)}%</span>` : ''}
+      ${Number(process.memoryMb || 0) > 0 ? `<span class="simple-port-meta-item metric-memory" dir="ltr">${Number(process.memoryMb || 0).toFixed(1)} MB</span>` : ''}
     </div>
     <div class="simple-port-row-actions">${actionHtml}</div>
   `;
@@ -2695,7 +3020,7 @@ function renderCompactSimpleSystemProcesses() {
 
   appendSimplePortSection(cardsContainer, {
     id: 'category-system-resources',
-    title: '⚙️ תהליכי מערכת ומשאבים',
+    title: 'תהליכי מערכת ומשאבים',
     ports: filteredProcesses,
     defaultExpanded: true,
     sessionKey: 'accordion_system_resources_expanded'
@@ -2716,33 +3041,47 @@ function renderCompactSimplePorts() {
   const simpleSummaryText = document.getElementById('simple-summary-text');
   if (simpleSummaryText) simpleSummaryText.textContent = `מציג ${filteredPorts.length} תהליכים פעילים לפי קבוצה.`;
 
-  const categories = {
-    dev: { id: 'category-dev', title: '💻 אתרים ושרתי פיתוח מקומיים', ports: [], defaultExpanded: true, sessionKey: 'accordion_dev_expanded' },
-    db: { id: 'category-db', title: '🐘 מסדי נתונים ושירותי רקע', ports: [], defaultExpanded: false, sessionKey: 'accordion_db_expanded' },
-    apps: { id: 'category-apps', title: '🌐 אפליקציות ודפדפנים', ports: [], defaultExpanded: false, sessionKey: 'accordion_apps_expanded' },
-    other: { id: 'category-other', title: '⚙️ שירותים אחרים', ports: [], defaultExpanded: false, sessionKey: 'accordion_other_expanded' }
-  };
+  const projectGroups = new Map();
+  const supportingServices = { id: 'category-support', title: 'שירותי עזר מקומיים', subtitle: 'מסדי נתונים, Docker ושירותים ללא תיקיית פרויקט', ports: [], defaultExpanded: false, sessionKey: 'accordion_support_expanded' };
 
   userPorts.forEach((portObj) => {
     const name = (portObj.processName || '').toLowerCase();
     const command = (portObj.commandLine || '').toLowerCase();
     const portNumber = Number(portObj.port);
     const description = PORT_DESCRIPTIONS[portNumber] || '';
-    const isDatabase = name.includes('postgres') || name.includes('pg') || name.includes('mysql') || name.includes('redis') || name.includes('mongo') || name.includes('elastic') || name.includes('sql') || name.includes('docker') || name.includes('dockerd') || [3306, 5432, 6379, 27017, 9200].includes(portNumber) || description.includes('נתונים') || description.includes('Redis');
+    const isDatabase = portObj.project?.serviceType === 'database' || portObj.project?.serviceType === 'container-service' || name.includes('postgres') || name.includes('pg') || name.includes('mysql') || name.includes('redis') || name.includes('mongo') || name.includes('elastic') || name.includes('sql') || name.includes('docker') || name.includes('dockerd') || [3306, 5432, 6379, 27017, 9200].includes(portNumber) || description.includes('נתונים') || description.includes('Redis');
     const isApplication = name.includes('chrome') || name.includes('chromium') || name.includes('firefox') || name.includes('safari') || name.includes('browser') || name.includes('slack') || name.includes('spotify') || name.includes('electron') || name.includes('discord') || command.includes('.app/contents/macos/');
-    const isDevelopment = name.includes('node') || name.includes('npm') || name.includes('python') || name.includes('vite') || name.includes('ruby') || name.includes('go') || name.includes('gopls') || name.includes('port-manager') || name.includes('server.js') || [80, 443, 3000, 5000, 5173, 7000, 8000, 8080, 9000].includes(portNumber) || description.includes('פיתוח') || description.includes('שרת');
+    const isDevelopment = portObj.project?.serviceType === 'development-server' || name.includes('node') || name.includes('npm') || name.includes('python') || name.includes('vite') || name.includes('ruby') || name.includes('go') || name.includes('gopls') || name.includes('port-manager') || name.includes('server.js') || [80, 443, 3000, 5000, 5173, 7000, 8000, 8080, 9000].includes(portNumber) || description.includes('פיתוח') || description.includes('שרת');
 
-    if (isDatabase) categories.db.ports.push(portObj);
-    else if (isApplication) categories.apps.ports.push(portObj);
-    else if (isDevelopment) categories.dev.ports.push(portObj);
-    else categories.other.ports.push(portObj);
+    const project = portObj.project;
+    const isProjectService = project?.location && (project.serviceType === 'development-server' || isDevelopment) && !isDatabase && !isApplication;
+    if (isProjectService) {
+      const key = project.location;
+      if (!projectGroups.has(key)) {
+        projectGroups.set(key, {
+          id: `project-${key.replace(/[^a-zA-Z0-9_-]/g, '-').slice(-72)}`,
+          title: project.name || 'פרויקט מקומי',
+          subtitle: `${project.framework || 'שירות פיתוח'} · ${project.location.split('/').filter(Boolean).slice(-2).join('/')}`,
+          ports: [],
+          defaultExpanded: true,
+          sessionKey: `accordion_project_${key}`
+        });
+      }
+      projectGroups.get(key).ports.push(portObj);
+    } else {
+      supportingServices.ports.push(portObj);
+    }
   });
 
-  if (activeFilter !== 'system') Object.values(categories).forEach((category) => appendSimplePortSection(cardsContainer, category, createSimplePortRow));
+  if (activeFilter !== 'system') {
+    [...projectGroups.values()].sort((a, b) => a.title.localeCompare(b.title)).forEach((category) => appendSimplePortSection(cardsContainer, category, createSimplePortRow));
+    appendSimplePortSection(cardsContainer, supportingServices, createSimplePortRow);
+  }
   if (activeFilter !== 'user') {
     appendSimplePortSection(cardsContainer, {
       id: 'category-system',
-      title: '⚙️ תהליכי מערכת של macOS',
+      title: 'תהליכים מוגנים של macOS',
+      subtitle: 'מוצגים לצפייה בלבד — לא ניתן לעצור אותם מכאן',
       ports: systemPorts,
       defaultExpanded: activeFilter === 'system',
       sessionKey: 'accordion_system_expanded'
@@ -2785,4 +3124,359 @@ function setupViewModeToggle() {
 
   // Set initial state
   setMode(viewMode);
+}
+
+// ─── ACTIVITY MONITOR TAB HELPERS ──────────────────────────────────────────
+
+let activityMonitorData = null;
+
+function focusCurrentTabSearch() {
+  const activeTab = document.documentElement.dataset.activeTab || 'ports';
+  const inputId = activeTab === 'ports' ? 'search-input'
+    : activeTab === 'cache' ? 'cache-search-input'
+    : `${activeTab}-search-input`;
+  const input = document.getElementById(inputId);
+  if (input) {
+    input.focus();
+    if (typeof input.select === 'function') input.select();
+  }
+}
+
+async function fetchActivityMonitorTab(tabName, { force = false } = {}) {
+  try {
+    activityMonitorData = await resourceClient.getJson('activity-monitor', '/api/system/activity-monitor', { force });
+    if (getActiveTab() !== tabName) return;
+    renderActivityMonitorTab(tabName, activityMonitorData);
+  } catch (err) {
+    if (err?.name === 'AbortError') return;
+    console.error('Failed to fetch activity monitor data:', err);
+    const tbody = document.getElementById(`${tabName}-table-body`);
+    const count = document.getElementById(`${tabName}-results-count`);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="loading-state">לא ניתן לעדכן את הנתונים כרגע. מוצגים רק נתונים קודמים, אם קיימים.</td></tr>';
+    if (count) count.textContent = 'העדכון נכשל — נסה לרענן';
+    announceUiStatus('לא ניתן לעדכן את נתוני פעילות המערכת. נסה לרענן שוב.');
+    showToast('עדכון פעילות המערכת נכשל. הנתונים אינם עדכניים.', 'warning');
+  }
+}
+
+function updateVibeCoderSummaryCards(tabName, data) {
+  if (!data) return;
+
+  if (tabName === 'cpu' && data.cpu) {
+    const usage = Number(data.cpu.usagePercentage || 0).toFixed(1);
+    const topProc = data.cpu.topProcesses && data.cpu.topProcesses[0];
+    const cpuVal = document.getElementById('vibe-cpu-val');
+    const cpuBadge = document.getElementById('vibe-cpu-badge');
+    const topName = document.getElementById('vibe-cpu-top-name');
+    const topUsage = document.getElementById('vibe-cpu-top-usage');
+    const advice = document.getElementById('vibe-cpu-advice');
+
+    if (cpuVal) cpuVal.textContent = `${usage}%`;
+    if (cpuBadge) {
+      if (usage > 75) {
+        cpuBadge.className = 'vibe-badge vibe-badge-danger';
+        cpuBadge.textContent = 'עומס כבד';
+      } else if (usage > 40) {
+        cpuBadge.className = 'vibe-badge vibe-badge-warning';
+        cpuBadge.textContent = 'עומס בינוני';
+      } else {
+        cpuBadge.className = 'vibe-badge vibe-badge-success';
+        cpuBadge.textContent = 'תקין';
+      }
+    }
+    if (topName && topProc) {
+      topName.textContent = topProc.humanTitle || topProc.processName || '---';
+    }
+    if (topUsage && topProc) {
+      topUsage.textContent = `שימוש CPU: ${topProc.cpu}% · PID ${topProc.pid}`;
+    }
+    if (advice) {
+      advice.textContent = usage > 70 
+        ? `זוהה עומס מעבד של ${usage}%. מומלץ לבדוק את התהליך ${topProc?.processName || ''}.`
+        : 'המעבד פנוי, עבודה חלקה במהירות מלאה.';
+    }
+  }
+
+  if (tabName === 'memory' && data.memory) {
+    const usedGb = (Number(data.memory.usedBytes || 0) / (1024 ** 3)).toFixed(1);
+    const totalGb = (Number(data.memory.totalBytes || 1) / (1024 ** 3)).toFixed(0);
+    const topProc = data.memory.topProcesses && data.memory.topProcesses[0];
+    const memVal = document.getElementById('vibe-memory-val');
+    const memBadge = document.getElementById('vibe-memory-badge');
+    const topName = document.getElementById('vibe-memory-top-name');
+    const topUsage = document.getElementById('vibe-memory-top-usage');
+    const advice = document.getElementById('vibe-memory-advice');
+
+    if (memVal) memVal.textContent = `${usedGb} GB מתוך ${totalGb} GB`;
+    if (memBadge) {
+      const pct = data.memory.percentage || 0;
+      if (pct > 80) {
+        memBadge.className = 'vibe-badge vibe-badge-warning';
+        memBadge.textContent = 'לחץ זיכרון';
+      } else {
+        memBadge.className = 'vibe-badge vibe-badge-success';
+        memBadge.textContent = 'מאוזן';
+      }
+    }
+    if (topName && topProc) {
+      topName.textContent = topProc.humanTitle || topProc.processName || '---';
+    }
+    if (topUsage && topProc) {
+      topUsage.textContent = `צריכה: ${topProc.memoryMb || topProc.memory || '--'} MB · PID ${topProc.pid}`;
+    }
+    if (advice) {
+      advice.textContent = 'יש מספיק RAM פנוי לכל השרתים והכלים.';
+    }
+  }
+
+  if (tabName === 'energy' && data.energy) {
+    const topProc = data.energy.topProcesses && data.energy.topProcesses[0];
+    const energyVal = document.getElementById('vibe-energy-val');
+    const topName = document.getElementById('vibe-energy-top-name');
+    const topUsage = document.getElementById('vibe-energy-top-usage');
+
+    if (energyVal) energyVal.textContent = 'תקין';
+    if (topName && topProc) {
+      topName.textContent = topProc.humanTitle || topProc.processName || '---';
+    }
+    if (topUsage && topProc) {
+      topUsage.textContent = `השפעה: ${topProc.energyImpact || 'נמוכה'} · CPU ${topProc.cpu}%`;
+    }
+  }
+
+  if (tabName === 'disk' && data.disk) {
+    const usedGb = (Number(data.disk.usedBytes || 0) / (1024 ** 3)).toFixed(1);
+    const diskVal = document.getElementById('vibe-disk-val');
+    if (diskVal) diskVal.textContent = `${usedGb} GB בשימוש`;
+  }
+}
+
+function renderActivityMonitorTab(tabName, data) {
+  if (!data) return;
+  updateVibeCoderSummaryCards(tabName, data);
+  applyActivityFilters(tabName);
+}
+
+function applyActivityFilters(tabName) {
+  if (!activityMonitorData || !activityMonitorData[tabName]) return;
+  const { query, filter } = activityFilters[tabName] || { query: '', filter: 'all' };
+  const list = tabName === 'cpu' ? activityMonitorData.cpu.topProcesses
+    : tabName === 'memory' ? activityMonitorData.memory.topProcesses
+    : tabName === 'energy' ? activityMonitorData.energy.topProcesses
+    : activityMonitorData.disk.topProcesses;
+
+  if (!list) return;
+
+  const filtered = list.filter(proc => {
+    if (query) {
+      const searchStr = `${proc.processName} ${proc.humanTitle || ''} ${proc.humanDescription || ''} ${proc.pid} ${proc.user || ''} ${proc.commandLine || ''}`.toLowerCase();
+      if (!searchStr.includes(query)) return false;
+    }
+
+    const isSystem = proc.isSystem === true || proc.safetyCategory === 'SYSTEM_PROTECTED' || proc.user === 'root' || proc.user === 'windowserver_';
+    const isVerified = proc.safetyCategory === 'SAFE' || proc.isVerified === true;
+
+    if (filter === 'user') {
+      return !isSystem;
+    } else if (filter === 'system') {
+      return isSystem;
+    } else if (filter === 'verified') {
+      return isVerified;
+    } else if (filter === 'caution') {
+      return proc.safetyCategory === 'CAUTION' || isSystem;
+    }
+
+    return true;
+  });
+
+  renderActivityTable(tabName, filtered);
+}
+
+function filterActivityTable(tabName, query) {
+  if (activityFilters[tabName]) {
+    activityFilters[tabName].query = query;
+  }
+  applyActivityFilters(tabName);
+}
+
+function renderActivityTable(tabName, processes) {
+  const tbody = document.getElementById(`${tabName}-table-body`);
+  const countEl = document.getElementById(`${tabName}-results-count`);
+  if (!tbody) return;
+
+  if (countEl) {
+    countEl.textContent = `מוצגים ${processes.length} תהליכים`;
+  }
+
+  if (processes.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="loading-state">לא נמצאו תהליכים מתאימים</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = processes.map(proc => {
+    const isSystem = proc.isSystem === true || proc.safetyCategory === 'SYSTEM_PROTECTED' || proc.user === 'root' || proc.user === 'windowserver_';
+    const isVerified = proc.safetyCategory === 'SAFE' || proc.isVerified === true;
+    const safetyBadge = isSystem
+      ? '<span class="safety-badge system-protected" title="מאומת: תהליך מוגן של מערכת ההפעלה macOS">⚙️ macOS מוגן</span>'
+      : isVerified
+        ? '<span class="safety-badge safe" title="מאומת: אפליקציית משתמש מאושרת לחלוטין">🛡️ מאומת</span>'
+        : proc.safetyCategory === 'CAUTION'
+          ? '<span class="safety-badge caution" title="תהליך פיתוח/שרת מקומי - מומלץ לבדוק לפני סגירה">⚠️ זהירות</span>'
+          : '<span class="safety-badge safe" title="אפליקציית משתמש רגילה">🟢 בטוח</span>';
+
+    const killDisabled = isSystem;
+    const suspendDisabled = isSystem;
+
+    let cellsHtml = '';
+    if (tabName === 'cpu') {
+      cellsHtml = `
+        <td>
+          <div class="process-info-cell">
+            <strong class="process-title">${escapeHtml(proc.humanTitle || proc.processName)}</strong>
+            <span class="process-subtitle">${escapeHtml(proc.humanDescription || proc.commandLine || '')}</span>
+          </div>
+        </td>
+        <td><code>${proc.pid}</code></td>
+        <td><span class="metric-highlight">${proc.cpu}%</span></td>
+        <td>${proc.energyImpact || 0}</td>
+        <td>${escapeHtml(proc.user || '-')}</td>
+        <td>${safetyBadge}</td>
+      `;
+    } else if (tabName === 'memory') {
+      cellsHtml = `
+        <td>
+          <div class="process-info-cell">
+            <strong class="process-title">${escapeHtml(proc.humanTitle || proc.processName)}</strong>
+            <span class="process-subtitle">${escapeHtml(proc.humanDescription || proc.commandLine || '')}</span>
+          </div>
+        </td>
+        <td><code>${proc.pid}</code></td>
+        <td><span class="metric-highlight">${proc.memoryMb} MB</span></td>
+        <td>${escapeHtml(proc.user || '-')}</td>
+        <td>${safetyBadge}</td>
+      `;
+    } else if (tabName === 'energy') {
+      cellsHtml = `
+        <td>
+          <div class="process-info-cell">
+            <strong class="process-title">${escapeHtml(proc.humanTitle || proc.processName)}</strong>
+            <span class="process-subtitle">${escapeHtml(proc.humanDescription || proc.commandLine || '')}</span>
+          </div>
+        </td>
+        <td><code>${proc.pid}</code></td>
+        <td><span class="metric-highlight">${proc.energyImpact || 0}</span></td>
+        <td>${proc.cpu}%</td>
+        <td>${safetyBadge}</td>
+      `;
+    } else if (tabName === 'disk') {
+      cellsHtml = `
+        <td>
+          <div class="process-info-cell">
+            <strong class="process-title">${escapeHtml(proc.humanTitle || proc.processName)}</strong>
+            <span class="process-subtitle">${escapeHtml(proc.humanDescription || proc.commandLine || '')}</span>
+          </div>
+        </td>
+        <td><code>${proc.pid}</code></td>
+        <td><span class="metric-highlight">${proc.memoryMb} MB</span></td>
+        <td>${escapeHtml(proc.user || '-')}</td>
+        <td>${safetyBadge}</td>
+      `;
+    }
+
+    const actionCell = `
+      <td>
+        <div class="action-buttons-group">
+          <button class="btn btn-secondary btn-xs suspend-btn" data-pid="${proc.pid}" ${suspendDisabled ? 'disabled' : ''} title="${proc.isSuspended ? 'המשך ריצה' : 'השהה תהליך'}">
+            ${proc.isSuspended ? '▶️ המשך' : '⏸️ השהה'}
+          </button>
+          <button class="btn btn-danger btn-xs kill-proc-btn" data-pid="${proc.pid}" data-name="${escapeHtml(proc.humanTitle || proc.processName)}" ${killDisabled ? 'disabled' : ''} title="סגור תהליך">
+            ❌ סגור
+          </button>
+        </div>
+      </td>
+    `;
+
+    return `<tr>${cellsHtml}${actionCell}</tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('.suspend-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const pid = Number(e.currentTarget.dataset.pid);
+      if (!pid) return;
+      const proc = processes.find(p => p.pid === pid);
+      if (proc && proc.isSuspended) {
+        await resumeSystemProcess(pid);
+      } else {
+        // Suspending is destructive enough to require the same explicit sheet
+        // used from the primary processes view.
+        if (proc) openSuspendConfirmModal(proc);
+        return;
+      }
+      fetchActivityMonitorTab(tabName);
+    });
+  });
+
+  tbody.querySelectorAll('.kill-proc-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const pid = Number(e.currentTarget.dataset.pid);
+      const name = e.currentTarget.dataset.name;
+      if (pid) {
+        openConfirmModal('kill', { pid, processName: name || 'Process', commandLine: name || 'Unknown', port: '-' });
+      }
+    });
+  });
+}
+
+function filterActivityTable(tabName, query) {
+  if (!activityMonitorData) return;
+  const list = tabName === 'cpu' ? activityMonitorData.cpu.topProcesses
+    : tabName === 'memory' ? activityMonitorData.memory.topProcesses
+    : tabName === 'energy' ? activityMonitorData.energy.topProcesses
+    : activityMonitorData.disk.topProcesses;
+
+  const filtered = list.filter(proc => {
+    const searchStr = `${proc.processName} ${proc.humanTitle || ''} ${proc.humanDescription || ''} ${proc.pid} ${proc.commandLine || ''}`.toLowerCase();
+    return searchStr.includes(query);
+  });
+
+  renderActivityMonitorTab(tabName, {
+    ...activityMonitorData,
+    [tabName]: {
+      ...activityMonitorData[tabName],
+      topProcesses: filtered
+    }
+  });
+}
+
+async function copyAiSummary() {
+  try {
+    const res = await fetch('/api/system/activity-monitor');
+    if (!res.ok) throw new Error('Network error');
+    const data = await res.json();
+
+    const portsList = (allPorts || []).slice(0, 15).map(p => {
+      const dev = detectDevStack(p);
+      const tag = dev ? ` [${dev.name}]` : '';
+      return `  - Port ${p.port}: ${p.processName || p.name || 'Unknown'} (PID ${p.pid})${tag}`;
+    }).join('\n');
+
+    const summaryText = `### 💻 macOS Dev Environment & Ports Summary (Vibe Coding Context)
+**Timestamp:** ${new Date(data.timestamp).toLocaleString('he-IL')}
+
+#### 🌐 Active Network Ports & Dev Stack:
+- **Active Ports Count:** ${data.network?.activePortsCount || (allPorts ? allPorts.length : 0)}
+${portsList || '  - No active dev ports detected.'}
+
+#### 📊 System Resources & Activity:
+- **CPU Load:** ${data.cpu?.usagePercentage}% (${data.cpu?.activeProcessesCount} active processes)
+- **Top CPU Processes:** ${data.cpu?.topProcesses.slice(0, 3).map(p => `${p.humanTitle || p.processName} (${p.cpu}%)`).join(', ') || 'N/A'}
+- **Memory Used:** ${(data.memory?.usedBytes / 1073741824).toFixed(1)} GB / ${(data.memory?.totalBytes / 1073741824).toFixed(1)} GB (${data.memory?.percentage}%) [Pressure: ${data.memory?.pressure || 'Normal'}]
+- **Disk Usage:** ${(data.disk?.usedBytes / 1073741824).toFixed(1)} GB / ${(data.disk?.totalBytes / 1073741824).toFixed(1)} GB (${data.disk?.percentage}%)
+`;
+
+    await navigator.clipboard.writeText(summaryText);
+    showToast('🚀 סיכום סביבת הפיתוח והפורטים הועתק ללוח בפורמט מותאם ל-AI!', 'success');
+  } catch (err) {
+    showToast('נכשלה העתקת סיכום המערכת', 'error');
+  }
 }

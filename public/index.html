@@ -2,80 +2,131 @@
 <html lang="he" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>מנהל פורטים (macOS Port Manager)</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔌%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23007aff'/%3E%3Cpath d='M10 9v6m12-6v6M8 15h16v2a8 8 0 0 1-16 0v-2Zm8 8v4' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
 </head>
 <body>
+  <a href="#main-content" class="skip-link">דלג לתוכן הראשי</a>
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container"></div>
   <div id="ui-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-  <!-- Main App Layout -->
+  <!-- Main App Layout (Full-bleed macOS Desktop Interface) -->
   <div class="app-container">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="brand">
-        <span class="logo" role="img" aria-label="מנהל פורטים">🔌</span>
-        <div class="brand-text">
-          <h1>מה רץ לי במחשב?</h1>
-          <p class="subtitle">רואים אילו אפליקציות משתמשות ברשת, וסוגרים רק כשצריך</p>
+      <!-- Header -->
+      <header class="app-header app-shell-surface">
+        <div class="header-left-cluster">
+          <div class="mac-window-controls" title="macOS Controls">
+            <span class="mac-window-dot close"></span>
+            <span class="mac-window-dot minimize"></span>
+            <span class="mac-window-dot maximize"></span>
+          </div>
+          <div class="brand">
+            <span class="logo" role="img" aria-label="מנהל פורטים">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="brand-icon" style="width:22px;height:22px;color:var(--color-primary);">
+                <path d="M12 2v8M12 14v8M2 12h8M14 12h8M4.93 4.93l5.66 5.66M13.41 13.41l5.66 5.66M19.07 4.93l-5.66 5.66M10.59 13.41l-5.66 5.66"/>
+              </svg>
+            </span>
+            <div class="brand-text">
+              <h1>Port Manager</h1>
+              <p class="subtitle">מרכז הבקרה לפיתוח המקומי שלך</p>
+            </div>
+          </div>
         </div>
-      </div>
       <div class="header-actions">
-        <span id="header-safety-badge" class="safety-header-badge" title="מצב הגנה: קריאה בלבד">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-badge" style="width:16px;height:16px;">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
-        </span>
-        <div class="status-indicator">
-          <span class="status-pulse"></span>
-          <span class="status-text">חיבור שרת פעיל</span>
-        </div>
-        <button id="settings-btn" class="btn btn-secondary btn-settings" aria-label="פתח הגדרות אבטחה">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-settings">
+        <span id="refresh-status" class="refresh-status" role="status" aria-live="polite">הנתונים מעודכנים</span>
+        <button id="settings-btn" class="btn btn-secondary btn-settings" aria-label="פתח הגדרות">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-settings" style="width:14px;height:14px;">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
           </svg>
-          מצב בטיחות
+          <span class="toolbar-label">הגדרות</span>
         </button>
         <button id="refresh-btn" class="btn btn-primary btn-refresh">
-          <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
           רענון
         </button>
-        <button id="focus-mode-btn" class="btn btn-secondary btn-focus-mode" type="button" aria-pressed="false" aria-label="הפעל מצב ריכוז">
-          <span aria-hidden="true">◐</span>
-          מצב ריכוז
-        </button>
         <button id="info-trigger-btn" class="info-hub-btn" aria-label="פתח מדריך והסברים">
-          <span>ⓘ</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         </button>
       </div>
     </header>
 
     <!-- Main Workspace Layout -->
     <div class="main-layout">
-      <!-- Top Navigation Segmented Tabs -->
-      <nav class="top-navigation glass" role="navigation" aria-label="ניווט ראשי">
-        <button id="tab-btn-ports" class="nav-btn active" data-tab="ports" aria-label="ניהול פורטים ותהליכים">
-          <span class="nav-icon">🔌</span>
-          <span class="nav-text">פורטים ותהליכים</span>
+      <aside class="app-sidebar" aria-label="סרגל צד">
+        <nav class="top-navigation app-shell-surface" aria-label="ניווט ראשי">
+        <p class="sidebar-section-label">סביבת פיתוח</p>
+        <button id="tab-btn-ports" class="nav-btn active" data-tab="ports" aria-label="פרויקטים פעילים">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </span>
+          <span class="nav-text">פרויקטים</span>
           <span id="tab-badge-ports" class="count-badge hidden"></span>
         </button>
-        <button id="tab-btn-cache" class="nav-btn" data-tab="cache" aria-label="ניקוי קבצי Cache">
-          <span class="nav-icon">🧹</span>
-          <span class="nav-text">ניקוי Cache</span>
+        <p class="sidebar-section-label">כלי מערכת</p>
+        <button id="tab-btn-cpu" class="nav-btn" data-tab="cpu" aria-label="מעבד">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
+          </span>
+          <span class="nav-text">מעבד</span>
+          <span id="tab-badge-cpu" class="count-badge hidden"></span>
+        </button>
+        <button id="tab-btn-memory" class="nav-btn" data-tab="memory" aria-label="זיכרון">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M6 19v2M10 19v2M14 19v2M18 19v2M6 3v2M10 3v2M14 3v2M18 3v2"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+          </span>
+          <span class="nav-text">זיכרון</span>
+          <span id="tab-badge-memory" class="count-badge hidden"></span>
+        </button>
+        <button id="tab-btn-energy" class="nav-btn" data-tab="energy" aria-label="צריכה">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </span>
+          <span class="nav-text">צריכה</span>
+          <span id="tab-badge-energy" class="count-badge hidden"></span>
+        </button>
+        <button id="tab-btn-disk" class="nav-btn" data-tab="disk" aria-label="אחסון">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>
+          </span>
+          <span class="nav-text">אחסון</span>
+          <span id="tab-badge-disk" class="count-badge hidden"></span>
+        </button>
+        <p class="sidebar-section-label">תחזוקה</p>
+        <button id="tab-btn-cache" class="nav-btn" data-tab="cache" aria-label="ניקוי Cache">
+          <span class="nav-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+          </span>
+          <span class="nav-text">קבצים זמניים</span>
           <span id="metric-cache-usage" class="count-badge hidden"></span>
         </button>
       </nav>
+      <div class="sidebar-utility-actions" aria-label="כלים נוספים">
+        <button id="ai-summary-btn" class="sidebar-action" type="button" aria-label="העתק סיכום ל-AI" title="העתק סיכום מצב מערכת קריא עבור AI">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          סיכום ל-AI
+        </button>
+        <button id="focus-mode-btn" class="sidebar-action" type="button" aria-pressed="false" aria-label="הפעל מצב ריכוז">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20z" fill="currentColor"/></svg>
+          מצב ריכוז
+        </button>
+      </div>
+      <div class="sidebar-health" aria-label="מצב היישום">
+        <span id="header-safety-badge" class="safety-header-badge" title="מצב הגנה: קריאה בלבד">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-badge" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        </span>
+        <div class="status-indicator"><span class="status-pulse"></span><span class="status-text">המערכת זמינה</span></div>
+      </div>
+      </aside>
 
       <!-- Content Area -->
-      <div class="app-content-area">
+      <main id="main-content" class="app-content-area" tabindex="-1">
         <!-- Persistent System Status Bar -->
         <section class="system-status-bar glass" aria-label="מדדי מערכת">
           <!-- CPU Metric -->
@@ -114,13 +165,13 @@
         <div id="view-ports" class="tab-view">
 
           <!-- Dynamic Warning Banner -->
-          <section id="warning-banner" class="warning-banner glass hidden" style="margin-bottom: 20px;">
-            <div class="warning-header" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <span class="warning-icon" style="font-size: var(--font-size-2xl);">⚠️</span>
+          <section id="warning-banner" class="warning-banner glass hidden">
+            <div class="warning-header">
+              <div class="warning-intro-group">
+                <span class="warning-icon">⚠️</span>
                 <div class="warning-title">
-                  <h3 style="margin: 0; color: #ff4b4b; font-size: var(--font-size-lg);">זוהה עומס כבד במערכת</h3>
-                  <p id="warning-message" style="margin: 4px 0 0 0; font-size: var(--font-size-sm); color: #aaa;">מומלץ לבדוק את התהליכים הבאים לפני סגירה או השהיה:</p>
+                  <h3 class="text-danger">זוהה עומס כבד במערכת</h3>
+                  <p id="warning-message" class="text-muted">מומלץ לבדוק את התהליכים הבאים לפני סגירה או השהיה:</p>
                 </div>
               </div>
               <button id="quick-clean-btn" class="btn btn-danger hidden" aria-hidden="true" tabindex="-1">אופטימיזציה מהירה</button>
@@ -132,8 +183,8 @@
           <section class="controls-panel glass">
             <div class="workspace-intro">
               <div>
-                <p class="eyebrow">אפליקציות וחיבורים</p>
-                <h2 id="current-view-title">מה פתוח עכשיו</h2>
+                <p class="eyebrow">מה רץ אצלך עכשיו</p>
+                <h2 id="current-view-title">הפרויקטים והשירותים המקומיים שלך</h2>
               </div>
               <p id="results-count" class="results-count" aria-live="polite">טוען נתונים…</p>
             </div>
@@ -146,7 +197,7 @@
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
-                <input type="text" id="search-input" placeholder="חיפוש אפליקציה או מספר פורט…" autocomplete="off" aria-label="חיפוש אפליקציה או מספר פורט">
+                <input type="text" id="search-input" placeholder="חיפוש לפי פרויקט, כלי פיתוח או פורט…" autocomplete="off" aria-label="חיפוש לפי פרויקט, כלי פיתוח או פורט">
               </div>
             </div>
 
@@ -165,20 +216,20 @@
             </div>
 
             <div class="view-mode-toggle" role="radiogroup" aria-label="מצב תצוגה">
-              <button id="view-mode-simple" class="view-mode-btn" role="radio" aria-checked="false" data-mode="simple">✨ תצוגה פשוטה</button>
-              <button id="view-mode-detailed" class="view-mode-btn" role="radio" aria-checked="false" data-mode="detailed">🛠️ תצוגה מתקדמת</button>
+              <button id="view-mode-simple" class="view-mode-btn" role="radio" aria-checked="false" data-mode="simple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> תצוגה פשוטה</button>
+              <button id="view-mode-detailed" class="view-mode-btn" role="radio" aria-checked="false" data-mode="detailed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> פרטים טכניים</button>
             </div>
 
             <div class="filter-tabs">
               <button class="filter-tab active" data-filter="all">הכול</button>
-              <button class="filter-tab" data-filter="user">האפליקציות שלי</button>
-              <button class="filter-tab" data-filter="system">macOS</button>
+              <button class="filter-tab" data-filter="user">שלי בלבד</button>
+              <button class="filter-tab" data-filter="system">מוגני macOS</button>
               <button class="filter-tab" data-filter="system-resources">כל התהליכים</button>
             </div>
           </section>
 
           <!-- Ports Display Area -->
-          <main class="ports-container glass">
+          <section class="ports-container glass" aria-label="פרויקטים ושירותים">
             <!-- Detailed Table View -->
             <div id="table-view-wrapper" class="table-wrapper">
               <table class="ports-table">
@@ -218,7 +269,296 @@
               <h3>לא נמצאו פורטים פעילים</h3>
               <p>נסה לנקות את תיבת החיפוש או לשנות מסננים.</p>
             </div>
-          </main>
+          </section>
+        </div>
+
+        <!-- CPU View (Tab Page 2) -->
+        <div id="view-cpu" class="tab-view hidden">
+          <section class="controls-panel glass">
+            <div class="workspace-intro">
+              <div>
+                <p class="eyebrow">ניטור מעבד</p>
+                <h2>תהליכים ושימוש ב-CPU</h2>
+              </div>
+              <p id="cpu-results-count" class="results-count" aria-live="polite">טוען נתוני מעבד…</p>
+            </div>
+            <div class="workspace-primary-controls">
+              <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="cpu-search-input" placeholder="חיפוש תהליך לפי שם, PID או משתמש…" autocomplete="off" aria-label="חיפוש תהליכי מעבד">
+                <span class="search-shortcut-badge">⌘F</span>
+              </div>
+            </div>
+            <div class="filter-tabs cpu-filter-tabs">
+              <button class="filter-tab active" data-cpu-filter="all">הכול</button>
+              <button class="filter-tab" data-cpu-filter="user">האפליקציות שלי</button>
+              <button class="filter-tab" data-cpu-filter="system">macOS</button>
+              <button class="filter-tab" data-cpu-filter="verified">מאומתים 🛡️</button>
+              <button class="filter-tab" data-cpu-filter="caution">בסיכון / מוגנים ⚠️</button>
+            </div>
+          </section>
+
+          <!-- Vibe Coder Summary Grid - CPU -->
+          <div class="vibe-summary-grid" style="margin-top: 14px;">
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">⚡ עומס מעבד כולל</span>
+                <span id="vibe-cpu-badge" class="vibe-badge vibe-badge-success">תקין</span>
+              </div>
+              <div id="vibe-cpu-val" class="card-value" dir="ltr">--%</div>
+              <div class="card-subtext">שימוש שוטף במעבד ב-Mac</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">🔥 התהליך הכבד ביותר</span>
+              </div>
+              <div id="vibe-cpu-top-name" class="card-value" style="font-size: var(--font-size-lg);">--</div>
+              <div id="vibe-cpu-top-usage" class="card-subtext">--</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">💡 המלצה לוויב-קודר</span>
+              </div>
+              <div id="vibe-cpu-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">המעבד פנוי, עבודה חלקה במהירות מלאה.</div>
+            </div>
+          </div>
+
+          <section class="table-container glass" style="margin-top: 12px;" aria-label="תהליכי מעבד">
+            <div class="table-scroll-area">
+              <table class="ports-table" aria-label="טבלת תהליכי מעבד">
+                <thead>
+                  <tr>
+                    <th>אפליקציה / תהליך</th>
+                    <th>PID</th>
+                    <th>שימוש CPU</th>
+                    <th>השפעה אנרגטית</th>
+                    <th>משתמש</th>
+                    <th>אימות וסטטוס</th>
+                    <th>פעולות</th>
+                  </tr>
+                </thead>
+                <tbody id="cpu-table-body">
+                  <tr><td colspan="7" class="loading-state"><div class="spinner"></div> טוען תהליכי מעבד…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Memory View (Tab Page 3) -->
+        <div id="view-memory" class="tab-view hidden">
+          <section class="controls-panel glass">
+            <div class="workspace-intro">
+              <div>
+                <p class="eyebrow">ניטור זיכרון</p>
+                <h2>שימוש ב-RAM ולחץ זיכרון</h2>
+              </div>
+              <p id="memory-results-count" class="results-count" aria-live="polite">טוען נתוני זיכרון…</p>
+            </div>
+            <div class="workspace-primary-controls">
+              <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="memory-search-input" placeholder="חיפוש תהליך לפי שם או PID…" autocomplete="off" aria-label="חיפוש תהליכי זיכרון">
+                <span class="search-shortcut-badge">⌘F</span>
+              </div>
+            </div>
+            <div class="filter-tabs memory-filter-tabs">
+              <button class="filter-tab active" data-memory-filter="all">הכול</button>
+              <button class="filter-tab" data-memory-filter="user">האפליקציות שלי</button>
+              <button class="filter-tab" data-memory-filter="system">macOS</button>
+              <button class="filter-tab" data-memory-filter="verified">מאומתים 🛡️</button>
+              <button class="filter-tab" data-memory-filter="caution">בסיכון / מוגנים ⚠️</button>
+            </div>
+          </section>
+
+          <!-- Vibe Coder Summary Grid - Memory -->
+          <div class="vibe-summary-grid" style="margin-top: 14px;">
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">🧠 זיכרון בשימוש (RAM)</span>
+                <span id="vibe-memory-badge" class="vibe-badge vibe-badge-success">מאוזן</span>
+              </div>
+              <div id="vibe-memory-val" class="card-value" dir="ltr">-- GB</div>
+              <div class="card-subtext">זיכרון מערכת תפוס</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">📦 צרכן הזיכרון המוביל</span>
+              </div>
+              <div id="vibe-memory-top-name" class="card-value" style="font-size: var(--font-size-lg);">--</div>
+              <div id="vibe-memory-top-usage" class="card-subtext">--</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">💡 המלצה לוויב-קודר</span>
+              </div>
+              <div id="vibe-memory-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">יש מספיק RAM פנוי לכל השרתים.</div>
+            </div>
+          </div>
+
+          <section class="table-container glass" style="margin-top: 12px;" aria-label="תהליכי זיכרון">
+            <div class="table-scroll-area">
+              <table class="ports-table" aria-label="טבלת תהליכי זיכרון">
+                <thead>
+                  <tr>
+                    <th>אפליקציה / תהליך</th>
+                    <th>PID</th>
+                    <th>שימוש בזיכרון (MB)</th>
+                    <th>משתמש</th>
+                    <th>אימות וסטטוס</th>
+                    <th>פעולות</th>
+                  </tr>
+                </thead>
+                <tbody id="memory-table-body">
+                  <tr><td colspan="6" class="loading-state"><div class="spinner"></div> טוען תהליכי זיכרון…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Energy View (Tab Page 4) -->
+        <div id="view-energy" class="tab-view hidden">
+          <section class="controls-panel glass">
+            <div class="workspace-intro">
+              <div>
+                <p class="eyebrow">צריכת חשמל ואנרגיה</p>
+                <h2>השפעה אנרגטית ומצב שינה</h2>
+              </div>
+              <p id="energy-results-count" class="results-count" aria-live="polite">טוען נתוני צריכה…</p>
+            </div>
+            <div class="workspace-primary-controls">
+              <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="energy-search-input" placeholder="חיפוש תהליך לפי שם או PID…" autocomplete="off" aria-label="חיפוש תהליכי צריכה">
+                <span class="search-shortcut-badge">⌘F</span>
+              </div>
+            </div>
+            <div class="filter-tabs energy-filter-tabs">
+              <button class="filter-tab active" data-energy-filter="all">הכול</button>
+              <button class="filter-tab" data-energy-filter="user">האפליקציות שלי</button>
+              <button class="filter-tab" data-energy-filter="system">macOS</button>
+              <button class="filter-tab" data-energy-filter="verified">מאומתים 🛡️</button>
+              <button class="filter-tab" data-energy-filter="caution">בסיכון / מוגנים ⚠️</button>
+            </div>
+          </section>
+
+          <!-- Vibe Coder Summary Grid - Energy -->
+          <div class="vibe-summary-grid" style="margin-top: 14px;">
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">🔋 השפעת אנרגיה</span>
+                <span id="vibe-energy-badge" class="vibe-badge vibe-badge-success">חסכוני</span>
+              </div>
+              <div id="vibe-energy-val" class="card-value">ירוק</div>
+              <div class="card-subtext">צריכת סוללה שוטפת במחשב</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">⚡ זולל סוללה ראששי</span>
+              </div>
+              <div id="vibe-energy-top-name" class="card-value" style="font-size: var(--font-size-lg);">--</div>
+              <div id="vibe-energy-top-usage" class="card-subtext">--</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">💡 המלצה ל-Vibe Coders</span>
+              </div>
+              <div id="vibe-energy-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">אין אפליקציות שזוללות סוללה ברקע.</div>
+            </div>
+          </div>
+
+          <section class="table-container glass" style="margin-top: 12px;" aria-label="תהליכי צריכת אנרגיה">
+            <div class="table-scroll-area">
+              <table class="ports-table" aria-label="טבלת השפעה אנרגטית">
+                <thead>
+                  <tr>
+                    <th>אפליקציה / תהליך</th>
+                    <th>PID</th>
+                    <th>השפעה אנרגטית</th>
+                    <th>שימוש CPU %</th>
+                    <th>אימות וסטטוס</th>
+                    <th>פעולות</th>
+                  </tr>
+                </thead>
+                <tbody id="energy-table-body">
+                  <tr><td colspan="6" class="loading-state"><div class="spinner"></div> טוען נתוני אנרגיה…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <!-- Disk View (Tab Page 5) -->
+        <div id="view-disk" class="tab-view hidden">
+          <section class="controls-panel glass">
+            <div class="workspace-intro">
+              <div>
+                <p class="eyebrow">אחסון ודיסק</p>
+                <h2>שימוש בדיסק וקבצים זמניים</h2>
+              </div>
+              <p id="disk-results-count" class="results-count" aria-live="polite">טוען נתוני דיסק…</p>
+            </div>
+            <div class="workspace-primary-controls">
+              <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="disk-search-input" placeholder="חיפוש תהליך או אחסון..." autocomplete="off" aria-label="חיפוש אחסון ודיסק">
+                <span class="search-shortcut-badge">⌘F</span>
+              </div>
+            </div>
+            <div class="filter-tabs disk-filter-tabs">
+              <button class="filter-tab active" data-disk-filter="all">הכול</button>
+              <button class="filter-tab" data-disk-filter="user">האפליקציות שלי</button>
+              <button class="filter-tab" data-disk-filter="system">macOS</button>
+              <button class="filter-tab" data-disk-filter="verified">מאומתים 🛡️</button>
+              <button class="filter-tab" data-disk-filter="caution">בסיכון / מוגנים ⚠️</button>
+            </div>
+          </section>
+
+          <!-- Vibe Coder Summary Grid - Disk -->
+          <div class="vibe-summary-grid" style="margin-top: 14px;">
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">💾 אחסון בשימוש</span>
+                <span id="vibe-disk-badge" class="vibe-badge vibe-badge-info">דיסק מקומי</span>
+              </div>
+              <div id="vibe-disk-val" class="card-value" dir="ltr">-- GB</div>
+              <div class="card-subtext">מקום תפוס ב-Mac</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">🧹 ניקוי מטמון מומלץ</span>
+              </div>
+              <div id="vibe-disk-cache-val" class="card-value" style="font-size: var(--font-size-lg);">זמין לניקוי</div>
+              <div class="card-subtext">קבצי Cache בטוחים למחיקה</div>
+            </div>
+            <div class="vibe-hero-card">
+              <div class="card-header">
+                <span class="card-title">💡 המלצה לוויב-קודר</span>
+              </div>
+              <div id="vibe-disk-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">אפשר לבצע ניקוי בטאב קבצים זמניים.</div>
+            </div>
+          </div>
+
+          <section class="table-container glass" style="margin-top: 12px;" aria-label="תהליכי אחסון">
+            <div class="table-scroll-area">
+              <table class="ports-table" aria-label="טבלת תהליכי דיסק ואחסון">
+                <thead>
+                  <tr>
+                    <th>אפליקציה / תהליך</th>
+                    <th>PID</th>
+                    <th>שימוש זיכרון / דיסק</th>
+                    <th>משתמש</th>
+                    <th>אימות וסטטוס</th>
+                    <th>פעולות</th>
+                  </tr>
+                </thead>
+                <tbody id="disk-table-body">
+                  <tr><td colspan="6" class="loading-state"><div class="spinner"></div> טוען נתוני דיסק…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
 
         <!-- Cache View (Tab Page 2) -->
@@ -261,11 +601,11 @@
             <p id="cache-results-count" class="results-count" aria-live="polite"></p>
           </section>
 
-          <main id="cache-groups" class="cache-groups" aria-live="polite"></main>
+          <section id="cache-groups" class="cache-groups" aria-label="קבוצות קבצים זמניים"></section>
           <div id="cache-findings" class="hidden" aria-hidden="true"></div>
           <div id="cache-empty-state" class="empty-state hidden"><div class="empty-icon">🧹</div><h3>לא נמצאו תיקיות מתאימות</h3><p>נסה לשנות את החיפוש או את סינון הגודל.</p></div>
         </div>
-      </div>
+      </main>
     </div>
 
     <!-- Recent Actions History Panel (Collapsible) -->
@@ -299,6 +639,7 @@
       </div>
     </footer>
   </div>
+  </div>
 
   <!-- Settings Panel Overlay -->
   <div id="settings-overlay" class="settings-overlay hidden"></div>
@@ -307,7 +648,7 @@
   <aside id="settings-panel" class="settings-panel glass" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="settings-header">
       <h2 id="settings-title">⚙️ הגדרות אבטחה והגנה<!-- Safety Settings --></h2>
-      <button id="settings-close-btn" class="btn-close-modal" aria-label="סגור הגדרות">&times;</button>
+      <button id="settings-close-btn" class="btn-close-modal" type="button" aria-label="סגור הגדרות" onclick="if(window.SafetySettings && window.SafetySettings.close) window.SafetySettings.close();">&times;</button>
     </div>
 
     <div class="settings-body">

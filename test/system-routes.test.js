@@ -162,6 +162,35 @@ test('POST /api/system/suspend, resume, and kill return 400 for invalid PID', as
   }
 });
 
+test('GET /api/system/activity-monitor returns 5-dimension Activity Monitor summary', async () => {
+  const serviceMock = {
+    getActivityMonitorSummary: async () => ({
+      timestamp: '2026-08-07T12:00:00.000Z',
+      cpu: { usagePercentage: 10, activeProcessesCount: 5, topProcesses: [] },
+      memory: { usedBytes: 8000, totalBytes: 16000, percentage: 50, pressure: 'NORMAL', topProcesses: [] },
+      energy: { totalImpact: 15, highImpactCount: 0, preventingSleepCount: 0, topProcesses: [] },
+      disk: { totalBytes: 50000, usedBytes: 20000, availableBytes: 30000, percentage: 40, cacheKnownBytes: 1000, cacheItemsCount: 2, topProcesses: [] },
+      network: { activePortsCount: 3, listeningPorts: [], topProcesses: [] }
+    })
+  };
+  const app = createApp({ service: serviceMock });
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const address = server.address();
+  const url = `http://127.0.0.1:${address.port}/api/system/activity-monitor`;
+
+  try {
+    const res = await fetch(url);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.equal(data.cpu.usagePercentage, 10);
+    assert.equal(data.memory.pressure, 'NORMAL');
+    assert.equal(data.network.activePortsCount, 3);
+  } finally {
+    await new Promise(r => server.close(r));
+  }
+});
+
 test('GET /api/system/cache returns cache array', async () => {
   const serviceMock = {
     getCacheDetails: async () => [{ path: '/test/cache/path', sizeBytes: 500, fileCount: 5 }]

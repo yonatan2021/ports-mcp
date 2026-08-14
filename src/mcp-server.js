@@ -5,6 +5,8 @@ const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio
 const { z } = require('zod');
 const { createPortService, PortManagerError, MAX_PORTS_RETURNED } = require('./port-service');
 const { createAgentTools } = require('./mcp-tools');
+const { SafetyConfig } = require('./config');
+const { SafetyLayer } = require('./safety');
 
 const TOOL_TIMEOUT_MS = 15_000;
 
@@ -45,7 +47,15 @@ function errorResult(error) {
 const SAFETY_WARNING_LIST_PORTS = 'Returns active listening TCP ports with process and user information. IMPORTANT: Command-line arguments may contain tokens, file paths, or credentials. Handle output as sensitive data.';
 const SAFETY_WARNING_KILL = 'DESTRUCTIVE ACTION. Terminates a process by sending SIGTERM (and optionally SIGKILL). Requires explicit confirm=true. Validates pid/port match before acting. Refuses to terminate: self (Port Manager), system ports (<1024), and blocklisted system processes. Rate-limited to 5 kills/minute with 3s cooldown.';
 
-function createMcpServer({ service = createPortService(), safetyLayer = null } = {}) {
+function createDefaultMcpDependencies() {
+  const config = new SafetyConfig();
+  const safetyLayer = new SafetyLayer({ config });
+  const service = createPortService({ safetyLayer });
+  return { config, safetyLayer, service };
+}
+
+function createMcpServer(dependencies = null) {
+  const { service, safetyLayer } = dependencies || createDefaultMcpDependencies();
   const server = new McpServer({ name: 'ports-mcp', version: '1.0.0' });
 
   // Agent-optimized tools with structured JSON and safety guards
@@ -338,6 +348,22 @@ function createMcpServer({ service = createPortService(), safetyLayer = null } =
   );
 
   server.registerTool(
+    'get_activity_monitor_summary',
+    {
+      title: 'Get 5-dimension macOS Activity Monitor telemetry',
+      description: 'Returns comprehensive telemetry across CPU, Memory, Energy/Power, Disk/Storage, and Network dimensions.',
+      inputSchema: {},
+    },
+    withTimeout(async () => {
+      const result = await agentTools.getActivityMonitorSummary();
+      if (result.error) {
+        return { isError: true, ...jsonText(result) };
+      }
+      return jsonText(result);
+    }, 'get_activity_monitor_summary')
+  );
+
+  server.registerTool(
     'list_system_processes',
     {
       title: 'List resource-heavy system processes',
@@ -444,4 +470,5 @@ if (require.main === module) {
 
 module.exports = {
   createMcpServer,
+  createDefaultMcpDependencies,
 };

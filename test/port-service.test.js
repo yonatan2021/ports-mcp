@@ -82,6 +82,123 @@ test('listPorts uses execFile argv and enriches command lines without shell inte
   assert.ok(calls.every(([file]) => file !== 'sh' && file !== '/bin/sh'));
 });
 
+test('listPorts queries command lines only for listening PIDs in bounded ps batches', async () => {
+  const pidCount = 205;
+  const lsofOutput = [
+    'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME',
+    ...Array.from({ length: pidCount }, (_value, index) =>
+      `node ${10_000 + index} yoni 21u IPv4 0xabc 0t0 TCP *:${3000 + index} (LISTEN)`
+    ),
+  ].join('\n');
+  const commandQueries = [];
+  const runner = {
+    execFile: async (file, args) => {
+      if (file === 'lsof' && args.includes('cwd')) return { stdout: '' };
+      if (file === 'lsof') return { stdout: lsofOutput };
+      if (file === 'ps' && args.includes('pid=,command=')) {
+        commandQueries.push(args);
+        return { stdout: args[1].split(',').map(pid => `${pid} node server-${pid}.js`).join('\n') };
+      }
+      if (file === 'ps') return { stdout: ' %CPU RSS STAT PID USER COMM\n' };
+      throw new Error(`unexpected call ${file} ${args.join(' ')}`);
+    },
+  };
+
+  const ports = await createPortService({ runner }).listPorts();
+
+  assert.equal(ports.length, pidCount);
+  assert.equal(commandQueries.length, 3);
+  assert.ok(commandQueries.every(args => args[0] === '-p'));
+  assert.ok(commandQueries.every(args => args[1].split(',').length <= 100));
+  assert.ok(commandQueries.every(args => !args.includes('-A')));
+});
+
+test('concurrent cold listPorts calls share one scan', async () => {
+  let scanCount = 0;
+  let releaseScan;
+  const scanGate = new Promise(resolve => { releaseScan = resolve; });
+  const service = createPortService({
+    listPorts: async () => {
+      scanCount += 1;
+      await scanGate;
+      return [];
+    },
+  });
+
+  const pending = Promise.all(Array.from({ length: 8 }, () => service.listPorts()));
+  await new Promise(resolve => setImmediate(resolve));
+  const observedCount = scanCount;
+  releaseScan();
+  await pending;
+
+  assert.equal(observedCount, 1);
+});
+
+test('concurrent cold getSystemUsage calls share one system sample', async () => {
+  let commandCount = 0;
+  let releaseCommand;
+  const commandGate = new Promise(resolve => { releaseCommand = resolve; });
+  const service = createPortService({
+    runner: {
+      execFile: async () => {
+        commandCount += 1;
+        await commandGate;
+        return { stdout: 'System-wide memory free percentage: 50%' };
+      },
+    },
+    sleep: async () => {},
+  });
+
+  const pending = Promise.all(Array.from({ length: 8 }, () => service.getSystemUsage()));
+  await new Promise(resolve => setImmediate(resolve));
+  const observedCount = commandCount;
+  releaseCommand();
+  await pending;
+
+  assert.equal(observedCount, 1);
+});
+
+test('a failed port scan is observable and never presented as a healthy empty snapshot', async () => {
+  const service = createPortService({
+    runner: { execFile: async () => { throw new Error('lsof is unavailable'); } },
+  });
+
+  assert.deepEqual(await service.listPorts(), []);
+  assert.equal(service.getPortScanStatus().state, 'degraded');
+  assert.equal(service.getPortScanStatus().source, 'lsof');
+});
+
+test('a successful retry recovers port scan health after a transient lsof failure', async () => {
+  let lsofAttempts = 0;
+  const service = createPortService({
+    runner: {
+      execFile: async (file, args) => {
+        if (file === 'lsof' && !args.includes('cwd')) {
+          lsofAttempts += 1;
+          if (lsofAttempts === 1) throw new Error('lsof is temporarily unavailable');
+          return { stdout: LSOF_SAMPLE };
+        }
+        if (file === 'lsof') return { stdout: '' };
+        if (file === 'ps' && args.includes('pid=,command=')) return { stdout: '12345 node server.js\n22222 ControlCenter\n33333 python3 -m http.server\n' };
+        if (file === 'ps') return { stdout: ' %CPU RSS STAT PID USER COMM\n' };
+        throw new Error(`unexpected call ${file} ${args.join(' ')}`);
+      },
+    },
+  });
+
+  await service.listPorts();
+  assert.equal(service.getPortScanStatus().state, 'degraded');
+
+  const ports = await service.listPorts({ bypassCache: true });
+  assert.equal(ports.length, 3);
+  assert.deepEqual(service.getPortScanStatus(), {
+    state: 'ready',
+    observedAt: service.getPortScanStatus().observedAt,
+    source: 'lsof',
+    warning: null,
+  });
+});
+
 test('killProcessOnPort dry-runs by default and does not signal processes without confirm=true', async () => {
   const signals = [];
   const service = createPortService({
@@ -210,6 +327,39 @@ test('listPorts includes resource metrics for listening processes outside the sy
   assert.ok(typeof usage.cpu === 'number');
   assert.ok(typeof usage.memory.percentage === 'number');
   assert.ok(usage.memory.totalBytes > 0);
+});
+
+test('getActivityMonitorSummary aggregates 5 dimensions of telemetry', async () => {
+  const runner = {
+    execFile: async (file) => {
+      if (file === 'ps') {
+        return { stdout: ' %CPU RSS STAT PID USER COMM\n 5.0 1024 S 100 yoni node', stderr: '', exitCode: 0 };
+      }
+      if (file === 'lsof') {
+        return { stdout: 'COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\nnode 100 yoni 3u IPv4 0x123 0t0 TCP *:3000 (LISTEN)', stderr: '', exitCode: 0 };
+      }
+      if (file === 'df') {
+        return { stdout: 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/disk1s1 500000000 200000000 300000000 40% /', stderr: '', exitCode: 0 };
+      }
+      if (file === 'du') {
+        return { stdout: '1024 /Users/yoni/Library/Caches/test', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    }
+  };
+  const service = createPortService({ runner });
+  const summary = await service.getActivityMonitorSummary();
+  assert.ok(summary.timestamp);
+  assert.ok(typeof summary.cpu.usagePercentage === 'number');
+  assert.ok(Array.isArray(summary.cpu.topProcesses));
+  assert.ok(typeof summary.memory.percentage === 'number');
+  assert.ok(Array.isArray(summary.memory.topProcesses));
+  assert.ok(typeof summary.energy.totalImpact === 'number');
+  assert.ok(Array.isArray(summary.energy.topProcesses));
+  assert.ok(typeof summary.disk.totalBytes === 'number');
+  assert.ok(Array.isArray(summary.disk.topProcesses));
+  assert.ok(typeof summary.network.activePortsCount === 'number');
+  assert.ok(Array.isArray(summary.network.listeningPorts));
 });
 
 test('getSystemUsage uses macOS memory pressure instead of raw free memory', async () => {
@@ -389,6 +539,3 @@ test('portsCache is invalidated on process/port kill, suspend, and resume', asyn
   await service.listPorts();
   assert.equal(callCount, 5); // Increased
 });
-
-
-
