@@ -240,6 +240,20 @@ npm test
 npm run dev
 ```
 
+## Product site
+
+The bilingual Port Manager product site is a static Vercel build under `site/`.
+It renders `/he`, `/en`, and localized privacy pages. Build it with:
+
+```bash
+GITHUB_TOKEN=... SITE_URL=https://your-domain.example npm run site:build
+```
+
+`GITHUB_TOKEN` is used only at build time to validate the latest GitHub Release
+and its architecture-specific macOS DMG assets. Configure `SITE_URL`,
+`GA_MEASUREMENT_ID`, `GITHUB_TOKEN`, and `VERCEL_DEPLOY_HOOK_URL` as Vercel or
+GitHub secrets; never commit them. The site loads GA4 only after visitor consent.
+
 ## Security
 
 See `SECURITY.md`. Key points:

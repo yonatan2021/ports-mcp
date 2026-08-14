@@ -66,3 +66,9 @@ jobs:
             --title "Port Manager ${VERSION}" \
             --notes-file RELEASE_NOTES.md || \
           gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber
+
+      - name: Trigger Port Manager site deployment
+        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL != '' }}
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error --request POST "$VERCEL_DEPLOY_HOOK_URL"

@@ -13,7 +13,9 @@
     "mcp": "node src/mcp-server.js",
     "test": "node --test",
     "desktop": "electron .",
-    "package:mac": "electron-builder --mac"
+    "package:mac": "electron-builder --mac",
+    "site:build": "node site/scripts/build.mjs",
+    "site:test": "node --test site/test/*.test.js"
   },
   "keywords": [
     "port-manager",
