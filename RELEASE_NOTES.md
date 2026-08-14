@@ -49,6 +49,3 @@ For a desktop build, run:
 ```bash
 npm run package:mac -- --arm64 --x64 --publish never
 ```
-
-This document prepares version 1.2.0 only. Publishing the Git tag and GitHub
-Release remains a separate, deliberate step.
