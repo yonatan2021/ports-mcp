@@ -92,3 +92,4 @@ docs/superpowers/**/
 .gemini/**
 PERFORMANCE.md
 PRODUCT.md
+.vercel
