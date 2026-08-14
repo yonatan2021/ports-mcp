@@ -229,6 +229,21 @@
     });
   }
 
+  function partitionBlocklistPorts(ports) {
+    const systemPorts = [];
+    const customPorts = [];
+
+    ports.forEach(function (port) {
+      if (Number(port) >= 0 && Number(port) < 1024) {
+        systemPorts.push(port);
+      } else {
+        customPorts.push(port);
+      }
+    });
+
+    return { systemPorts, customPorts };
+  }
+
   function renderBlocklist() {
     if (!safetyState) {
       els.blocklistList.innerHTML = '<li class="list-empty">אין נתונים</li>';
@@ -241,15 +256,24 @@
       els.blocklistList.innerHTML = '<li class="list-empty">אין פורטים ברשימה החסומה</li>';
       return;
     }
-    els.blocklistList.innerHTML = ports.map(function (p) {
-      const isSystem = Number(p) <= 1024;
-      const tag = isSystem ? '<span class="port-type-badge system-badge">מערכת</span>' : '<span class="port-type-badge user-badge">משתמש</span>';
+    const { systemPorts, customPorts } = partitionBlocklistPorts(ports);
+    const systemPortSummary = systemPorts.length > 0
+      ? '<li class="port-list-item system-port-range-summary">' +
+          '<span class="port-num font-mono">0–1023</span>' +
+          '<span class="port-type-badge system-badge">מערכת</span>' +
+          '<span class="system-port-summary-copy">' + systemPorts.length + ' מתוך 1024 פורטי מערכת מוגנים</span>' +
+        '</li>'
+      : '';
+
+    const customPortItems = customPorts.map(function (p) {
       return '<li class="port-list-item blocklist-item">' +
         '<span class="port-num font-mono">' + p + '</span>' +
-        tag +
+        '<span class="port-type-badge user-badge">משתמש</span>' +
         '<button class="btn-list-remove" data-action="remove-blocklist" data-port="' + p + '" aria-label="הסר פורט ' + p + ' מהרשימה החסומה">&times;</button>' +
         '</li>';
     }).join('');
+
+    els.blocklistList.innerHTML = systemPortSummary + customPortItems;
 
     els.blocklistList.querySelectorAll('[data-action="remove-blocklist"]').forEach(function (btn) {
       btn.addEventListener('click', function () {

@@ -176,6 +176,15 @@ test('settings.js renders allowlist and blocklist items dynamically', () => {
   assert.match(settingsJs, /data-action="remove-blocklist"/);
 });
 
+test('settings groups the default system-port blocklist instead of rendering 1,024 controls', () => {
+  assert.match(settingsJs, /function partitionBlocklistPorts/);
+  assert.match(settingsJs, /systemPorts/);
+  assert.match(settingsJs, /customPorts/);
+  assert.match(settingsJs, /system-port-range-summary/);
+  assert.match(settingsJs, /1024/);
+  assert.match(settingsJs, /customPorts\.map/);
+});
+
 test('app.js exposes showToast globally for settings.js', () => {
   assert.match(appJs, /window\.showToast = showToast/);
 });

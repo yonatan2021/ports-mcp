@@ -91,3 +91,4 @@ docker-compose.override.yml
 docs/superpowers/**/
 .gemini/**
 PERFORMANCE.md
+PRODUCT.md

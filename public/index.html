@@ -19,11 +19,6 @@
       <!-- Header -->
       <header class="app-header app-shell-surface">
         <div class="header-left-cluster">
-          <div class="mac-window-controls" title="macOS Controls">
-            <span class="mac-window-dot close"></span>
-            <span class="mac-window-dot minimize"></span>
-            <span class="mac-window-dot maximize"></span>
-          </div>
           <div class="brand">
             <span class="logo" role="img" aria-label="מנהל פורטים">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="brand-icon" style="width:22px;height:22px;color:var(--color-primary);">
@@ -220,12 +215,13 @@
               <button id="view-mode-detailed" class="view-mode-btn" role="radio" aria-checked="false" data-mode="detailed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> פרטים טכניים</button>
             </div>
 
-            <div class="filter-tabs">
+            <div id="port-filter-tabs" class="filter-tabs" role="group" aria-label="סינון פרויקטים ושירותים">
               <button class="filter-tab active" data-filter="all">הכול</button>
               <button class="filter-tab" data-filter="user">שלי בלבד</button>
               <button class="filter-tab" data-filter="system">מוגני macOS</button>
               <button class="filter-tab" data-filter="system-resources">כל התהליכים</button>
             </div>
+            <div id="dynamic-port-filters" class="dynamic-port-filters" role="group" aria-label="סינונים דינאמיים" hidden></div>
           </section>
 
           <!-- Ports Display Area -->
@@ -269,6 +265,27 @@
               <h3>לא נמצאו פורטים פעילים</h3>
               <p>נסה לנקות את תיבת החיפוש או לשנות מסננים.</p>
             </div>
+
+            <aside id="process-inspector" class="process-inspector hidden" aria-label="פרטי התהליך שנבחר" aria-live="polite">
+              <header class="inspector-header">
+                <div>
+                  <p class="inspector-kicker">תהליך נבחר</p>
+                  <h3 id="inspector-title" dir="ltr">—</h3>
+                </div>
+                <button id="inspector-close-btn" class="inspector-close" type="button" aria-label="סגור פרטי תהליך">×</button>
+              </header>
+              <dl class="inspector-details">
+                <div><dt>פורט</dt><dd id="inspector-port" class="font-mono" dir="ltr">—</dd></div>
+                <div><dt>PID</dt><dd id="inspector-pid" class="font-mono" dir="ltr">—</dd></div>
+                <div><dt>כתובת</dt><dd id="inspector-address" class="font-mono" dir="ltr">—</dd></div>
+                <div><dt>גישה</dt><dd id="inspector-access">—</dd></div>
+                <div class="inspector-command"><dt>פקודת הפעלה</dt><dd id="inspector-command" class="font-mono" dir="ltr">—</dd></div>
+              </dl>
+              <div class="inspector-actions">
+                <button id="inspector-details-btn" class="btn btn-secondary" type="button">פרטים מלאים</button>
+                <button id="inspector-kill-btn" class="btn btn-danger" type="button">סגור תהליך…</button>
+              </div>
+            </aside>
           </section>
         </div>
 
@@ -289,12 +306,12 @@
                 <span class="search-shortcut-badge">⌘F</span>
               </div>
             </div>
-            <div class="filter-tabs cpu-filter-tabs">
-              <button class="filter-tab active" data-cpu-filter="all">הכול</button>
-              <button class="filter-tab" data-cpu-filter="user">האפליקציות שלי</button>
-              <button class="filter-tab" data-cpu-filter="system">macOS</button>
-              <button class="filter-tab" data-cpu-filter="verified">מאומתים 🛡️</button>
-              <button class="filter-tab" data-cpu-filter="caution">בסיכון / מוגנים ⚠️</button>
+            <div class="filter-tabs cpu-filter-tabs" role="group" aria-label="סינון תהליכי מעבד">
+              <button class="filter-tab active" data-cpu-filter="all" aria-pressed="true">כל התהליכים</button>
+              <button class="filter-tab" data-cpu-filter="user" aria-pressed="false">אפליקציות שלי</button>
+              <button class="filter-tab" data-cpu-filter="system" aria-pressed="false">תהליכי macOS</button>
+              <button class="filter-tab" data-cpu-filter="caution" aria-pressed="false">דורש בדיקה</button>
+              <span id="cpu-dynamic-filters" class="activity-dynamic-filters" aria-label="סינונים דינאמיים לפי עומס מעבד"></span>
             </div>
           </section>
 
@@ -302,7 +319,7 @@
           <div class="vibe-summary-grid" style="margin-top: 14px;">
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">⚡ עומס מעבד כולל</span>
+                <span class="card-title">עומס מעבד כולל</span>
                 <span id="vibe-cpu-badge" class="vibe-badge vibe-badge-success">תקין</span>
               </div>
               <div id="vibe-cpu-val" class="card-value" dir="ltr">--%</div>
@@ -310,14 +327,14 @@
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">🔥 התהליך הכבד ביותר</span>
+                <span class="card-title">התהליך הכבד ביותר</span>
               </div>
               <div id="vibe-cpu-top-name" class="card-value" style="font-size: var(--font-size-lg);">--</div>
               <div id="vibe-cpu-top-usage" class="card-subtext">--</div>
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">💡 המלצה לוויב-קודר</span>
+                <span class="card-title">המלצה לעבודה</span>
               </div>
               <div id="vibe-cpu-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">המעבד פנוי, עבודה חלקה במהירות מלאה.</div>
             </div>
@@ -362,12 +379,12 @@
                 <span class="search-shortcut-badge">⌘F</span>
               </div>
             </div>
-            <div class="filter-tabs memory-filter-tabs">
-              <button class="filter-tab active" data-memory-filter="all">הכול</button>
-              <button class="filter-tab" data-memory-filter="user">האפליקציות שלי</button>
-              <button class="filter-tab" data-memory-filter="system">macOS</button>
-              <button class="filter-tab" data-memory-filter="verified">מאומתים 🛡️</button>
-              <button class="filter-tab" data-memory-filter="caution">בסיכון / מוגנים ⚠️</button>
+            <div class="filter-tabs memory-filter-tabs" role="group" aria-label="סינון תהליכי זיכרון">
+              <button class="filter-tab active" data-memory-filter="all" aria-pressed="true">כל התהליכים</button>
+              <button class="filter-tab" data-memory-filter="user" aria-pressed="false">אפליקציות שלי</button>
+              <button class="filter-tab" data-memory-filter="system" aria-pressed="false">תהליכי macOS</button>
+              <button class="filter-tab" data-memory-filter="caution" aria-pressed="false">דורש בדיקה</button>
+              <span id="memory-dynamic-filters" class="activity-dynamic-filters" aria-label="סינונים דינאמיים לפי צריכת זיכרון"></span>
             </div>
           </section>
 
@@ -375,7 +392,7 @@
           <div class="vibe-summary-grid" style="margin-top: 14px;">
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">🧠 זיכרון בשימוש (RAM)</span>
+                <span class="card-title">זיכרון בשימוש (RAM)</span>
                 <span id="vibe-memory-badge" class="vibe-badge vibe-badge-success">מאוזן</span>
               </div>
               <div id="vibe-memory-val" class="card-value" dir="ltr">-- GB</div>
@@ -383,14 +400,14 @@
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">📦 צרכן הזיכרון המוביל</span>
+                <span class="card-title">צרכן הזיכרון המוביל</span>
               </div>
               <div id="vibe-memory-top-name" class="card-value" style="font-size: var(--font-size-lg);">--</div>
               <div id="vibe-memory-top-usage" class="card-subtext">--</div>
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">💡 המלצה לוויב-קודר</span>
+                <span class="card-title">המלצה לעבודה</span>
               </div>
               <div id="vibe-memory-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">יש מספיק RAM פנוי לכל השרתים.</div>
             </div>
@@ -434,12 +451,12 @@
                 <span class="search-shortcut-badge">⌘F</span>
               </div>
             </div>
-            <div class="filter-tabs energy-filter-tabs">
-              <button class="filter-tab active" data-energy-filter="all">הכול</button>
-              <button class="filter-tab" data-energy-filter="user">האפליקציות שלי</button>
-              <button class="filter-tab" data-energy-filter="system">macOS</button>
-              <button class="filter-tab" data-energy-filter="verified">מאומתים 🛡️</button>
-              <button class="filter-tab" data-energy-filter="caution">בסיכון / מוגנים ⚠️</button>
+            <div class="filter-tabs energy-filter-tabs" role="group" aria-label="סינון תהליכי אנרגיה">
+              <button class="filter-tab active" data-energy-filter="all" aria-pressed="true">כל התהליכים</button>
+              <button class="filter-tab" data-energy-filter="user" aria-pressed="false">אפליקציות שלי</button>
+              <button class="filter-tab" data-energy-filter="system" aria-pressed="false">תהליכי macOS</button>
+              <button class="filter-tab" data-energy-filter="caution" aria-pressed="false">דורש בדיקה</button>
+              <span id="energy-dynamic-filters" class="activity-dynamic-filters" aria-label="סינונים דינאמיים לפי השפעת אנרגיה"></span>
             </div>
           </section>
 
@@ -447,7 +464,7 @@
           <div class="vibe-summary-grid" style="margin-top: 14px;">
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">🔋 השפעת אנרגיה</span>
+                <span class="card-title">השפעת אנרגיה</span>
                 <span id="vibe-energy-badge" class="vibe-badge vibe-badge-success">חסכוני</span>
               </div>
               <div id="vibe-energy-val" class="card-value">ירוק</div>
@@ -455,14 +472,14 @@
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">⚡ זולל סוללה ראששי</span>
+                <span class="card-title">צרכן האנרגיה המוביל</span>
               </div>
               <div id="vibe-energy-top-name" class="card-value" style="font-size: var(--font-size-lg);">--</div>
               <div id="vibe-energy-top-usage" class="card-subtext">--</div>
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">💡 המלצה ל-Vibe Coders</span>
+                <span class="card-title">המלצה לעבודה</span>
               </div>
               <div id="vibe-energy-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">אין אפליקציות שזוללות סוללה ברקע.</div>
             </div>
@@ -506,12 +523,12 @@
                 <span class="search-shortcut-badge">⌘F</span>
               </div>
             </div>
-            <div class="filter-tabs disk-filter-tabs">
-              <button class="filter-tab active" data-disk-filter="all">הכול</button>
-              <button class="filter-tab" data-disk-filter="user">האפליקציות שלי</button>
-              <button class="filter-tab" data-disk-filter="system">macOS</button>
-              <button class="filter-tab" data-disk-filter="verified">מאומתים 🛡️</button>
-              <button class="filter-tab" data-disk-filter="caution">בסיכון / מוגנים ⚠️</button>
+            <div class="filter-tabs disk-filter-tabs" role="group" aria-label="סינון תהליכי אחסון">
+              <button class="filter-tab active" data-disk-filter="all" aria-pressed="true">כל התהליכים</button>
+              <button class="filter-tab" data-disk-filter="user" aria-pressed="false">אפליקציות שלי</button>
+              <button class="filter-tab" data-disk-filter="system" aria-pressed="false">תהליכי macOS</button>
+              <button class="filter-tab" data-disk-filter="caution" aria-pressed="false">דורש בדיקה</button>
+              <span id="disk-dynamic-filters" class="activity-dynamic-filters" aria-label="סינונים דינאמיים לפי גודל תהליך"></span>
             </div>
           </section>
 
@@ -519,7 +536,7 @@
           <div class="vibe-summary-grid" style="margin-top: 14px;">
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">💾 אחסון בשימוש</span>
+                <span class="card-title">אחסון בשימוש</span>
                 <span id="vibe-disk-badge" class="vibe-badge vibe-badge-info">דיסק מקומי</span>
               </div>
               <div id="vibe-disk-val" class="card-value" dir="ltr">-- GB</div>
@@ -527,14 +544,14 @@
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">🧹 ניקוי מטמון מומלץ</span>
+                <span class="card-title">ניקוי מטמון מומלץ</span>
               </div>
               <div id="vibe-disk-cache-val" class="card-value" style="font-size: var(--font-size-lg);">זמין לניקוי</div>
               <div class="card-subtext">קבצי Cache בטוחים למחיקה</div>
             </div>
             <div class="vibe-hero-card">
               <div class="card-header">
-                <span class="card-title">💡 המלצה לוויב-קודר</span>
+                <span class="card-title">המלצה לעבודה</span>
               </div>
               <div id="vibe-disk-advice" class="card-subtext" style="font-size: var(--font-size-sm); font-weight: 500; color: var(--text-primary);">אפשר לבצע ניקוי בטאב קבצים זמניים.</div>
             </div>
@@ -565,45 +582,59 @@
         <div id="view-cache" class="tab-view hidden">
           <section class="cache-summary glass" aria-labelledby="cache-summary-title">
             <div class="cache-summary-copy">
-              <p class="eyebrow">ניקוי בטוח של קבצים זמניים</p>
-              <h2 id="cache-summary-title">אפשר לפנות מקום בלי לגעת בקבצים האישיים שלך</h2>
-              <p>Cache הוא מידע זמני שאפליקציות יכולות ליצור מחדש. הניקוי מעביר פריטים לפח האשפה ולא מוחק אותם לצמיתות.</p>
-              <ul class="cache-summary-insights" aria-label="עקרונות הניקוי הבטוח">
-                <li><strong>מיון מראש</strong><span>כל תיקייה מסווגת לפני שמוצעת פעולה.</span></li>
-                <li><strong>שליטה מלאה</strong><span>פריטים רגישים מחייבים בדיקה נוספת.</span></li>
-                <li><strong>רשת ביטחון</strong><span>הניקוי מעביר לפח האשפה, לא למחיקה מיידית.</span></li>
-              </ul>
+              <div class="cache-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+              </div>
+              <div>
+                <p class="cache-kicker">תחזוקה חכמה</p>
+                <h2 id="cache-summary-title">ניקוי קבצים זמניים, בשליטה מלאה</h2>
+                <p>נסרוק רק מטמונים שניתן ליצור מחדש. הניקוי מעביר אותם לפח האשפה — בלי לגעת בקבצים האישיים שלך.</p>
+                <ul class="cache-summary-insights" aria-label="עקרונות הניקוי הבטוח">
+                  <li>סיווג בטיחותי מראש</li><li>אישור לפני פעולה רגישה</li><li>העברה לפח במקום מחיקה</li>
+                </ul>
+              </div>
             </div>
-            <div class="cache-summary-metrics" aria-live="polite">
-              <span>בטוח לניקוי <strong id="cache-summary-safe-size">—</strong></span>
-              <span>נסרקו <strong id="cache-summary-total-size">—</strong></span>
+            <div class="cache-summary-metrics" aria-live="polite" aria-label="סיכום סריקת הקבצים הזמניים">
+              <div class="cache-metric cache-metric-safe"><span>זמין לניקוי בטוח</span><strong id="cache-summary-safe-size">—</strong></div>
+              <div class="cache-metric"><span>סה״כ נסרק</span><strong id="cache-summary-total-size">—</strong></div>
             </div>
             <div class="cache-summary-actions">
-              <button id="quick-clean-cache-btn" class="btn btn-success hidden" type="button">ניקוי בטוח</button>
-              <button id="storage-refresh-btn" class="btn btn-secondary" type="button">סריקה מחדש</button>
+              <button id="quick-clean-cache-btn" class="btn btn-success cache-primary-action hidden" type="button">נקה קבצים בטוחים</button>
+              <button id="storage-refresh-btn" class="btn btn-secondary cache-refresh-action" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg><span>סריקה מחדש</span></button>
             </div>
             <details class="cache-safety-note">
-              <summary>מה נכלל בניקוי בטוח?</summary>
+              <summary>למה אפשר לסמוך על הניקוי?</summary>
               <p>הניקוי המהיר כולל רק פריטים שסומנו מראש כבטוחים. קבצים אחרים נשארים מוגנים או דורשים בדיקה שלך.</p>
             </details>
           </section>
 
           <section class="cache-controls glass" aria-label="חיפוש וסינון תיקיות Cache">
-            <div class="search-wrapper">
-              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-              <input type="text" id="cache-search-input" placeholder="חיפוש אפליקציה או נתיב…" autocomplete="off" aria-label="חיפוש אפליקציה או נתיב Cache">
+            <div class="cache-controls-heading">
+              <div><p class="cache-kicker">תוצאות הסריקה</p><h3>מצא את מה שחשוב לך</h3></div>
+              <p id="cache-results-count" class="results-count" aria-live="polite"></p>
             </div>
-            <label class="cache-size-filter-label">גודל
-              <select id="cache-size-filter" class="select-filter" aria-label="סינון לפי גודל">
-                <option value="all">כל הגדלים</option><option value="100mb">מעל 100 MB</option><option value="1gb">מעל 1 GB</option>
-              </select>
-            </label>
-            <p id="cache-results-count" class="results-count" aria-live="polite"></p>
+            <div class="cache-control-row">
+              <div class="search-wrapper cache-search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="cache-search-input" placeholder="חיפוש לפי אפליקציה או נתיב…" autocomplete="off" aria-label="חיפוש אפליקציה או נתיב Cache">
+              </div>
+              <label class="cache-size-filter-label"><span>גודל מינימלי</span>
+                <select id="cache-size-filter" class="select-filter" aria-label="סינון לפי גודל">
+                  <option value="all">כל הגדלים</option><option value="100mb">מעל 100 MB</option><option value="1gb">מעל 1 GB</option>
+                </select>
+              </label>
+            </div>
+            <div class="cache-filter-tabs" role="group" aria-label="סינון לפי רמת בטיחות">
+              <button class="cache-filter-tab active" type="button" data-filter="all" aria-pressed="true">הכול</button>
+              <button class="cache-filter-tab" type="button" data-filter="SAFE_TO_CLEAR" aria-pressed="false">בטוח לניקוי</button>
+              <button class="cache-filter-tab" type="button" data-filter="NEEDS_CONFIRMATION" aria-pressed="false">לבדיקה</button>
+              <button class="cache-filter-tab" type="button" data-filter="SYSTEM_PROTECTED" aria-pressed="false">מוגן</button>
+            </div>
           </section>
 
           <section id="cache-groups" class="cache-groups" aria-label="קבוצות קבצים זמניים"></section>
           <div id="cache-findings" class="hidden" aria-hidden="true"></div>
-          <div id="cache-empty-state" class="empty-state hidden"><div class="empty-icon">🧹</div><h3>לא נמצאו תיקיות מתאימות</h3><p>נסה לשנות את החיפוש או את סינון הגודל.</p></div>
+          <div id="cache-empty-state" class="empty-state cache-empty-state hidden"><div class="empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div><h3>לא נמצאו קבצים מתאימים</h3><p>נסה לשנות את החיפוש או את סינון הגודל.</p></div>
         </div>
       </main>
     </div>

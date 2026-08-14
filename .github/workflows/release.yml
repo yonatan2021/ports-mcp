@@ -64,5 +64,5 @@ jobs:
           )
           gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
             --title "Port Manager ${VERSION}" \
-            --generate-notes || \
+            --notes-file RELEASE_NOTES.md || \
           gh release upload "$GITHUB_REF_NAME" "${ASSETS[@]}" --clobber

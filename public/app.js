@@ -14,6 +14,7 @@ let appUpdateReleaseUrl = null;
 let cacheItemsData = [];
 let appUpdateSupported = false;
 let lastBackgroundRefreshWarningAt = 0;
+let selectedPort = null;
 
 function createResourceClient(fetchImpl) {
   const inFlight = new Map();
@@ -163,6 +164,7 @@ if (window.portManager?.isElectron) {
 } else if (navigator.platform.includes('Mac')) {
   document.documentElement.classList.add('is-mac');
 }
+if (!window.portManager?.isElectron) document.documentElement.classList.add('is-browser');
 
 // Dictionary of common ports with descriptions in Hebrew
 const PORT_DESCRIPTIONS = {
@@ -438,7 +440,9 @@ const elements = {
   quickActionSearch: document.getElementById('quick-action-search'),
   quickActionResolve: document.getElementById('quick-action-resolve'),
   searchInput: document.getElementById('search-input'),
-  filterTabs: document.querySelectorAll('.filter-tab'),
+  filterTabs: document.querySelectorAll('#port-filter-tabs .filter-tab'),
+  portFilterTabs: document.getElementById('port-filter-tabs'),
+  dynamicPortFilters: document.getElementById('dynamic-port-filters'),
   emptyState: document.getElementById('empty-state'),
   toastContainer: document.getElementById('toast-container'),
   uiLiveRegion: document.getElementById('ui-live-region'),
@@ -491,6 +495,17 @@ const elements = {
   safeCleanWizardClose: document.getElementById('safe-clean-wizard-close'),
   resultsCount: document.getElementById('results-count'),
   currentViewTitle: document.getElementById('current-view-title'),
+  portsContainer: document.querySelector('.ports-container'),
+  processInspector: document.getElementById('process-inspector'),
+  inspectorTitle: document.getElementById('inspector-title'),
+  inspectorPort: document.getElementById('inspector-port'),
+  inspectorPid: document.getElementById('inspector-pid'),
+  inspectorAddress: document.getElementById('inspector-address'),
+  inspectorAccess: document.getElementById('inspector-access'),
+  inspectorCommand: document.getElementById('inspector-command'),
+  inspectorCloseBtn: document.getElementById('inspector-close-btn'),
+  inspectorDetailsBtn: document.getElementById('inspector-details-btn'),
+  inspectorKillBtn: document.getElementById('inspector-kill-btn'),
 
   // App information
   currentVersion: document.getElementById('current-version'),
@@ -560,6 +575,20 @@ const elements = {
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
+  elements.tableBody?.addEventListener('click', (event) => {
+    if (event.target.closest('button, a, input, label')) return;
+    const row = event.target.closest('tr[data-selection-key]');
+    if (!row) return;
+    const portObj = filteredPorts.find(item => getPortSelectionKey(item) === row.dataset.selectionKey);
+    if (portObj) selectProcessForInspection(portObj);
+  });
+  elements.inspectorCloseBtn?.addEventListener('click', closeProcessInspector);
+  elements.inspectorDetailsBtn?.addEventListener('click', () => {
+    if (selectedPort) openDetailsModal(selectedPort);
+  });
+  elements.inspectorKillBtn?.addEventListener('click', () => {
+    if (selectedPort && !elements.inspectorKillBtn.disabled) openConfirmModal('kill', selectedPort);
+  });
   setupEventListeners();
   setFocusMode(localStorage.getItem(FOCUS_MODE_STORAGE_KEY) === 'true', { announce: false });
   fetchAppInfo();
@@ -905,6 +934,7 @@ function setupEventListeners() {
         if (!btn) return;
         const filterVal = btn.getAttribute(`data-${tabName}-filter`) || btn.dataset.filter || 'all';
         filterTabsContainer.querySelectorAll('.filter-tab').forEach(b => b.classList.toggle('active', b === btn));
+        filterTabsContainer.querySelectorAll('.filter-tab').forEach(b => b.setAttribute('aria-pressed', String(b === btn)));
         activityFilters[tabName].filter = filterVal;
         applyActivityFilters(tabName);
       });
@@ -967,25 +997,33 @@ function setupEventListeners() {
       tab.addEventListener('click', () => {
         elements.cacheFilterTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
+        elements.cacheFilterTabs.forEach(t => t.setAttribute('aria-pressed', String(t === tab)));
         activeCacheFilter = tab.dataset.filter;
         filterAndRenderCache();
       });
     });
   }
 
-  // Filter tabs
-  elements.filterTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      elements.filterTabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      activeFilter = tab.dataset.filter;
-      if (activeFilter === 'system-resources') {
-        fetchSystemProcesses();
-      } else {
-        applyFilters();
-      }
-    });
-  });
+  // Project filters are intentionally scoped to the projects workspace. Activity
+  // Monitor uses its own filters above, with independent state per resource.
+  const selectPortFilter = (tab) => {
+    const nextFilter = tab?.dataset.filter;
+    if (!nextFilter) return;
+    [...elements.filterTabs, ...(elements.dynamicPortFilters?.querySelectorAll('.filter-tab') || [])]
+      .forEach(item => {
+        const isActive = item === tab;
+        item.classList.toggle('active', isActive);
+        item.setAttribute('aria-pressed', String(isActive));
+      });
+    activeFilter = nextFilter;
+    if (activeFilter === 'system-resources') {
+      fetchSystemProcesses();
+    } else {
+      applyFilters();
+    }
+  };
+  elements.portFilterTabs?.addEventListener('click', (event) => selectPortFilter(event.target.closest('.filter-tab')));
+  elements.dynamicPortFilters?.addEventListener('click', (event) => selectPortFilter(event.target.closest('.filter-tab')));
 
   // Table headers sorting
   document.querySelectorAll('.ports-table th.sortable').forEach(th => {
@@ -1451,6 +1489,10 @@ function applyFilters() {
     // 1. Tab filter
     if (activeFilter === 'system' && !portObj.isSystem) return false;
     if (activeFilter === 'user' && portObj.isSystem) return false;
+    if (activeFilter === 'project' && !portObj.project?.location) return false;
+    if (activeFilter === 'development' && !(portObj.project?.serviceType === 'development-server' || assessProcessRisk(portObj).level === 'low')) return false;
+    if (activeFilter === 'exposed' && getListenerInfo(portObj).label === 'מקומי בלבד') return false;
+    if (activeFilter === 'caution' && (portObj.isSystem || assessProcessRisk(portObj).level === 'low')) return false;
 
     // 2. Search query filter
     return matchSmartQuery(portObj, searchQuery, true);
@@ -1469,6 +1511,10 @@ function updateResultsSummary(count) {
     all: 'מה פתוח עכשיו',
     user: 'האפליקציות שלי',
     system: 'שירותי macOS',
+    project: 'פרויקטים שזוהו',
+    development: 'שרתי פיתוח',
+    exposed: 'שירותים פתוחים לרשת',
+    caution: 'תהליכים שכדאי לבדוק',
     'system-resources': 'כל התהליכים במחשב'
   };
   if (elements.currentViewTitle) {
@@ -1514,9 +1560,46 @@ function updateMetrics() {
     }
   });
 
+  renderDynamicPortFilters(uniquePorts);
+
   elements.metricActiveCount.textContent = activeCount;
   elements.metricUserCount.textContent = userCount;
   elements.metricSystemCount.textContent = systemCount;
+}
+
+function renderDynamicPortFilters(ports) {
+  if (!elements.dynamicPortFilters) return;
+
+  const filters = [
+    {
+      id: 'project',
+      label: 'פרויקטים שזוהו',
+      count: ports.filter(port => Boolean(port.project?.location)).length
+    },
+    {
+      id: 'development',
+      label: 'שרתי פיתוח',
+      count: ports.filter(port => port.project?.serviceType === 'development-server' || assessProcessRisk(port).level === 'low').length
+    },
+    {
+      id: 'exposed',
+      label: 'פתוחים לרשת',
+      count: ports.filter(port => !port.isSystem && getListenerInfo(port).label !== 'מקומי בלבד').length
+    },
+    {
+      id: 'caution',
+      label: 'לבדיקה לפני עצירה',
+      count: ports.filter(port => !port.isSystem && assessProcessRisk(port).level !== 'low').length
+    }
+  ].filter(filter => filter.count > 0);
+
+  elements.dynamicPortFilters.hidden = filters.length === 0;
+  elements.dynamicPortFilters.innerHTML = filters.map(filter => `
+    <button class="filter-tab dynamic-filter${activeFilter === filter.id ? ' active' : ''}" type="button"
+      data-filter="${filter.id}" aria-pressed="${activeFilter === filter.id}">
+      ${filter.label} <span class="dynamic-filter-count">${filter.count}</span>
+    </button>
+  `).join('');
 }
 
 function sortAndRender() {
@@ -1689,6 +1772,40 @@ function detectDevStack(portObj) {
   return null;
 }
 
+function getPortSelectionKey(portObj) {
+  return `${(portObj.ports || [portObj.port]).join(',')}:${(portObj.pids || [portObj.pid]).join(',')}`;
+}
+
+function closeProcessInspector() {
+  selectedPort = null;
+  elements.processInspector?.classList.add('hidden');
+  elements.portsContainer?.classList.remove('has-inspector');
+  sortAndRender();
+}
+
+function selectProcessForInspection(portObj) {
+  selectedPort = portObj;
+  const ports = (portObj.ports || [portObj.port]).join(', ');
+  const pids = (portObj.pids || [portObj.pid]).join(', ');
+  const addresses = (portObj.addresses || [portObj.address]).join(', ');
+  const portNumber = Number(portObj.port);
+  const canKill = !portObj.isAggregate && !portObj.isSystem && portNumber !== selfPort
+    && Boolean(window.SafetySettings?.canKill?.());
+
+  elements.inspectorTitle.textContent = getFriendlyAppName(portObj);
+  elements.inspectorPort.textContent = ports;
+  elements.inspectorPid.textContent = pids;
+  elements.inspectorAddress.textContent = addresses || '—';
+  elements.inspectorAccess.textContent = getListenerInfo(portObj).label;
+  elements.inspectorCommand.textContent = portObj.commandLine || '—';
+  elements.inspectorKillBtn.disabled = !canKill;
+  elements.inspectorKillBtn.title = canKill ? '' : 'פעולת סגירה אינה זמינה עבור תהליך מוגן, מרוכז או במצב קריאה בלבד.';
+  elements.processInspector.classList.remove('hidden');
+  elements.portsContainer.classList.add('has-inspector');
+  announceUiStatus(`נפתח inspector עבור ${getFriendlyAppName(portObj)}`);
+  sortAndRender();
+}
+
 // --- RENDERING ---
 function renderTable() {
   const tableView = document.getElementById('table-view-wrapper');
@@ -1726,7 +1843,7 @@ function renderTable() {
     isSystem: p.isSystem,
     commandLine: p.commandLine,
     user: p.user,
-  }))) + `_${viewMode}_${currentSort.column}_${currentSort.order}`;
+  }))) + `_${viewMode}_${currentSort.column}_${currentSort.order}_${selectedPort ? getPortSelectionKey(selectedPort) : ''}`;
   if (lastPortsRenderFingerprint === fingerprint) {
     return;
   }
@@ -1743,6 +1860,11 @@ function renderTable() {
 
   filteredPorts.forEach(portObj => {
     const tr = document.createElement('tr');
+    const isSelected = selectedPort && getPortSelectionKey(selectedPort) === getPortSelectionKey(portObj);
+    if (isSelected) tr.classList.add('is-selected');
+    tr.tabIndex = 0;
+    tr.dataset.selectionKey = getPortSelectionKey(portObj);
+    tr.setAttribute('aria-selected', isSelected ? 'true' : 'false');
     const portNumber = Number(portObj.port);
     const portText = escapeHtml((portObj.ports || [portObj.port]).join(', '));
     const pidText = escapeHtml((portObj.pids || [portObj.pid]).join(', '));
@@ -1875,6 +1997,13 @@ function renderTable() {
     // Hook buttons up
     tr.querySelector('.btn-details-action').addEventListener('click', () => {
       openDetailsModal(portObj);
+    });
+
+    tr.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        selectProcessForInspection(portObj);
+      }
     });
 
     if (!killDisabled) {
@@ -2469,14 +2598,15 @@ function createCacheItemCard(item) {
   const card = document.createElement('article');
   card.className = 'cache-item-card';
   card.innerHTML = `
-    <div>
-      <h4>${escapeHtml(item.name)}</h4>
+    <div class="cache-item-main">
+      <div class="cache-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+      <div class="cache-item-copy"><h4>${escapeHtml(item.name)}</h4>
       <p>${escapeHtml(item.description || copy.hint)}</p>
-      <p class="cache-item-safety">${copy.safety}</p>
+      <p class="cache-item-safety">${copy.safety}</p></div>
       <details class="cache-item-details"><summary>פרטים טכניים</summary><code>${escapeHtml(item.path)}</code></details>
     </div>
-    <div>
-      <strong>${formatCacheBytes(item.bytes)}</strong>
+    <div class="cache-item-actions">
+      <strong dir="ltr">${formatCacheBytes(item.bytes)}</strong>
       ${isProtected
         ? '<span class="cache-item-safety">מידע בלבד</span>'
         : '<button class="btn btn-danger cache-item-action" type="button">העבר לפח</button>'}
@@ -2508,12 +2638,14 @@ function renderCacheGroup(category, items) {
   const group = document.createElement('section');
   group.className = 'cache-group glass';
   group.dataset.cacheCategory = category;
+  const isRecommended = category === 'SAFE_TO_CLEAR';
+  group.classList.toggle('cache-group-recommended', isRecommended);
   group.innerHTML = `
-    <button class="cache-group-trigger" type="button" aria-expanded="false" aria-controls="${panelId}">
-      <span><strong>${copy.title}</strong><small>${copy.hint}</small></span>
-      <span class="cache-group-trigger-meta">${items.length} פריטים · ${formatCacheBytes(totalBytes)} <span class="cache-group-chevron" aria-hidden="true">⌄</span></span>
+    <button class="cache-group-trigger" type="button" aria-expanded="${isRecommended}" aria-controls="${panelId}">
+      <span class="cache-group-title"><span class="cache-group-status" aria-hidden="true"></span><span><strong>${copy.title}</strong><small>${copy.hint}</small></span></span>
+      <span class="cache-group-trigger-meta"><strong dir="ltr">${formatCacheBytes(totalBytes)}</strong><span>${items.length} פריטים</span><svg class="cache-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
-    <div id="${panelId}" class="cache-group-panel" hidden></div>`;
+    <div id="${panelId}" class="cache-group-panel"${isRecommended ? '' : ' hidden'}></div>`;
   const trigger = group.querySelector('.cache-group-trigger');
   const panel = group.querySelector('.cache-group-panel');
   trigger.addEventListener('click', () => {
@@ -2568,6 +2700,11 @@ function filterAndRenderCache() {
     elements.cacheResultsCount.textContent = `נמצאו ${items.length} תיקיות (${formatCacheBytes(totalFilteredBytes)})`;
   }
 
+  const safeItems = getSafeCacheItems(cacheItemsData);
+  const scannedBytes = cacheItemsData.reduce((sum, item) => sum + (item.bytes || 0), 0);
+  const safeBytes = safeItems.reduce((sum, item) => sum + (item.bytes || 0), 0);
+  if (elements.cacheSummarySafeSize) elements.cacheSummarySafeSize.textContent = formatCacheBytes(safeBytes);
+  if (elements.cacheSummaryTotalSize) elements.cacheSummaryTotalSize.textContent = formatCacheBytes(scannedBytes);
   elements.cacheGroups.replaceChildren();
 
   if (items.length === 0) {
@@ -2590,13 +2727,9 @@ function filterAndRenderCache() {
     }
   }
 
-  const safeItems = getSafeCacheItems(cacheItemsData);
-  const scannedBytes = cacheItemsData.reduce((sum, item) => sum + (item.bytes || 0), 0);
-  const safeBytes = safeItems.reduce((sum, item) => sum + (item.bytes || 0), 0);
-  if (elements.cacheSummarySafeSize) elements.cacheSummarySafeSize.textContent = formatCacheBytes(safeBytes);
-  if (elements.cacheSummaryTotalSize) elements.cacheSummaryTotalSize.textContent = `${cacheItemsData.length} פריטים · ${formatCacheBytes(scannedBytes)}`;
   ['SAFE_TO_CLEAR', 'NEEDS_CONFIRMATION', 'SYSTEM_PROTECTED'].forEach(category => {
-    elements.cacheGroups.appendChild(renderCacheGroup(category, items.filter(item => item.category === category)));
+    const categoryItems = items.filter(item => item.category === category);
+    if (categoryItems.length) elements.cacheGroups.appendChild(renderCacheGroup(category, categoryItems));
   });
 }
 
@@ -3254,7 +3387,50 @@ function updateVibeCoderSummaryCards(tabName, data) {
 function renderActivityMonitorTab(tabName, data) {
   if (!data) return;
   updateVibeCoderSummaryCards(tabName, data);
+  renderActivityDynamicFilters(tabName, data);
   applyActivityFilters(tabName);
+}
+
+function renderActivityDynamicFilters(tabName, data) {
+  const container = document.getElementById(`${tabName}-dynamic-filters`);
+  const processes = data?.[tabName]?.topProcesses || [];
+  if (!container) return;
+
+  const filterDefinitions = {
+    cpu: [
+      { id: 'cpu-active', label: 'CPU פעיל', match: proc => Number(proc.cpu || 0) > 0 },
+      { id: 'cpu-elevated', label: 'מעל 5%', match: proc => Number(proc.cpu || 0) >= 5 },
+      { id: 'cpu-high', label: 'מעל 15%', match: proc => Number(proc.cpu || 0) >= 15 }
+    ],
+    memory: [
+      { id: 'memory-elevated', label: 'מעל 500 MB', match: proc => Number(proc.memoryMb || 0) >= 500 },
+      { id: 'memory-high', label: 'מעל 1 GB', match: proc => Number(proc.memoryMb || 0) >= 1024 }
+    ],
+    energy: [
+      { id: 'energy-elevated', label: 'השפעה מעל 5', match: proc => Number(proc.energyImpact || 0) >= 5 },
+      { id: 'energy-high', label: 'השפעה מעל 10', match: proc => Number(proc.energyImpact || 0) >= 10 },
+      { id: 'sleep-impact', label: 'עלול למנוע שינה', match: proc => !proc.isSuspended && Number(proc.cpu || 0) > 5 }
+    ],
+    disk: [
+      { id: 'footprint-elevated', label: 'מעל 500 MB', match: proc => Number(proc.memoryMb || 0) >= 500 },
+      { id: 'footprint-high', label: 'מעל 1 GB', match: proc => Number(proc.memoryMb || 0) >= 1024 },
+      { id: 'project-process', label: 'מתוך פרויקט', match: proc => Boolean(proc.workingDirectory) }
+    ]
+  };
+
+  const filters = (filterDefinitions[tabName] || []).map(filter => ({
+    ...filter,
+    count: processes.filter(filter.match).length
+  })).filter(filter => filter.count > 0);
+
+  container.hidden = filters.length === 0;
+  container.innerHTML = filters.map(filter => `
+    <button class="filter-tab dynamic-filter${activityFilters[tabName]?.filter === filter.id ? ' active' : ''}"
+      type="button" data-${tabName}-filter="${filter.id}"
+      aria-pressed="${activityFilters[tabName]?.filter === filter.id}">
+      ${filter.label} <span class="dynamic-filter-count">${filter.count}</span>
+    </button>
+  `).join('');
 }
 
 function applyActivityFilters(tabName) {
@@ -3280,6 +3456,24 @@ function applyActivityFilters(tabName) {
       return !isSystem;
     } else if (filter === 'system') {
       return isSystem;
+    } else if (filter === 'cpu-active') {
+      return Number(proc.cpu || 0) > 0;
+    } else if (filter === 'cpu-elevated') {
+      return Number(proc.cpu || 0) >= 5;
+    } else if (filter === 'cpu-high') {
+      return Number(proc.cpu || 0) >= 15;
+    } else if (filter === 'memory-elevated' || filter === 'footprint-elevated') {
+      return Number(proc.memoryMb || 0) >= 500;
+    } else if (filter === 'memory-high' || filter === 'footprint-high') {
+      return Number(proc.memoryMb || 0) >= 1024;
+    } else if (filter === 'energy-elevated') {
+      return Number(proc.energyImpact || 0) >= 5;
+    } else if (filter === 'energy-high') {
+      return Number(proc.energyImpact || 0) >= 10;
+    } else if (filter === 'sleep-impact') {
+      return !proc.isSuspended && Number(proc.cpu || 0) > 5;
+    } else if (filter === 'project-process') {
+      return Boolean(proc.workingDirectory);
     } else if (filter === 'verified') {
       return isVerified;
     } else if (filter === 'caution') {

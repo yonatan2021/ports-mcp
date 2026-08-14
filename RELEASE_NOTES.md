@@ -1,84 +1,54 @@
-# Release Notes — Version 1.1.0
+# Release Notes — Version 1.2.0
 
-We are excited to release **version 1.1.0** of `ports-mcp`, upgrading the application from a simple port inspector to a comprehensive **macOS System Resource, Cache, Process & Safety Management Suite**. 
+`ports-mcp` 1.2.0 refines the local macOS workspace around faster project triage,
+safer process decisions, and a more focused cache-cleaning experience.
 
-This release includes the Midnight Glacier visual redesign, cache cleaning capabilities, process suspension controls, real-time system metrics, and highly-refined safety modes to ensure secure execution under agentic workflows.
+## Highlights
 
----
+### Project-first ports workspace
 
-## What's New in v1.1.0
+- Added adaptive filters for detected projects, development servers, externally
+  reachable services, and processes that merit review.
+- Added a keyboard-accessible process inspector with port, PID, listener scope,
+  command, full-details, and guarded termination controls.
+- Improved grouped port results, selection state, and compact table scanning.
 
-### 1. ❄️ Midnight Glacier UI Redesign
-A complete design overhaul centered around a premium, modern, dark-mode visual aesthetic:
-*   **Segmented Layout**: Dedicated navigation views for Ports, System Resources, Cache Cleaners, and Safety Settings.
-*   **Persistent Status Footer**: A constant dashboard overview indicating server status, safety mode, active cache size, and update availability.
-*   **RTL Localization**: Native support for Right-to-Left formatting (Hebrew) dynamically switching directionality (`dir="rtl"`).
-*   **Micro-Animations & Premium Effects**: Smooth transitions, customized interactive buttons, and distinct styling.
+### Activity Monitor improvements
 
-### 2. 🗄️ Cache Cleaning & Disk Optimization
-A brand-new utility to safely regain system storage space:
-*   **Safe Scan**: Automatically detects size and status of safe-to-trash developer and user caches (including NPM, Xcode, Cargo, Gradle, Bun, etc.).
-*   **Categorized Clean-up**: Groups folders into Collapsed, Accessible safety categories to review what is being deleted.
-*   **System Trash Integration**: Moves cache directories to the system trash bin instead of destructive immediate deletion (`rm -rf`).
-*   **Safety Guards**: Detects active lock conflicts (`ACTIVE_PROCESS_LOCK`), bypassing local cache states on success to show updated metrics.
+- Added dynamic CPU, memory, energy, and storage filters based on the processes
+  currently running on the Mac.
+- Refined system-monitoring views so user processes and protected macOS processes
+  are easier to distinguish.
 
-### 3. 📊 System Resources & Process Dashboard
-Monitor system health and resource consumption:
-*   **Real-time Metrics**: Track system-wide CPU and Memory usage percentages directly from the dashboard and persistent footer.
-*   **Top 50 Process List**: Access an active process list sorted by CPU and memory impact.
-*   **Pause & Resume**: Suspend (`SIGSTOP`) and Resume (`SIGCONT`) processes to manage CPU bottlenecks, guarded by critical process protections.
+### Cache-cleaning workflow
 
-### 4. 🛡️ Refined Safety & Execution Modes
-New robust execution configurations designed specifically for agentic AI usage:
-*   **Three Safety Modes**:
-    1.  **Read-Only**: Safely blocks all destructive actions (kills, cache clearing, suspension).
-    2.  **Guarded**: Prompts for confirmation on destructive actions.
-    3.  **Interactive / Allowlist-Only**: Limits actions only to specified allowed ports or processes.
-*   **Custom Allowlist & Blocklist**: Dynamically adjust safe/blocked lists via the settings panel.
-*   **System Port Protection**: Refuses operations on system ports (`<1024`) unless explicitly overridden.
-*   **Self-Kill Protection**: Prevents the Port Manager or stdio MCP server from killing itself.
-*   **Rate Limiting & Cooldown**: Capped at 5 destructive operations per minute with a 3-second mandatory cooldown.
+- Redesigned the cache workspace with scan summaries, safety guidance, size and
+  text filters, and grouped results.
+- Kept cleanup guarded: only backend-approved caches can be selected, and actual
+  cleanup still moves items to the macOS Trash after confirmation.
 
-### 5. ⚡ Service Optimizations & Performance
-*   **Concurrent Process Fetching**: Speeds up system metrics retrieval by fetching process details for multiple PIDs concurrently.
-*   **Smart Name Translation**: Dynamically parses process names and translates them for local search support.
-*   **Caching Layer**: Added service-level caching to prevent resource-heavy execution calls.
-*   **Grouped Port Listings**: Port items with identical commands/PIDs are collapsed into clean, grouped lists.
+### Safety and reliability
 
-### 6. 🧪 Robustness & Expanded Test Suite
-*   **195 Unit and Integration Tests**: Expanded testing coverage to cover edge cases, safety configurations, UI components, caching logic, and API routes.
-*   **Graceful Degredation**: Gracefully handles complete `lsof` command failures, `du` storage errors, and rate limit cooldown conflicts.
+- Collapsed the default system-port protection range into one summary in Settings,
+  rather than rendering 1,024 individual controls. Custom blocked ports remain
+  individually manageable.
+- Updated indirect runtime dependencies to remove the known security advisories
+  reported by `npm audit` at release preparation time.
 
----
+## Upgrade notes
 
-## New MCP Tools (For AI Agents)
-Agents calling the stdio MCP server now have access to the following capabilities:
-*   `verify_process_owner`: Confirms the username owning a target process.
-*   `get_process_details`: Rich details (ppid, uptime, full command line, etc.).
-*   `safe_kill_process`: Guarded process termination.
-*   `get_safety_status`: Returns current safety settings, rate-limiter, and allowlist state.
-*   `get_system_usage`: Returns system CPU and memory usage.
-*   `list_system_processes`: Lists top 50 resource-heavy active processes.
-*   `suspend_process` / `resume_process`: Pauses and resumes running programs.
-*   `list_caches` / `clean_cache`: Scan and clear macOS user/developer caches.
+Install the locked dependencies and run the test suite:
 
----
-
-## Upgrading
-
-To use the new version, fetch the latest code and install dependencies:
 ```bash
-git checkout main
-git pull
-npm install
-```
-
-Verify tests are passing:
-```bash
+npm ci
 npm test
 ```
 
-Run the server/web UI:
+For a desktop build, run:
+
 ```bash
-npm start
+npm run package:mac -- --arm64 --x64 --publish never
 ```
+
+This document prepares version 1.2.0 only. Publishing the Git tag and GitHub
+Release remains a separate, deliberate step.
