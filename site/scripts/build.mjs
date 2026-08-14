@@ -6,7 +6,7 @@ import { fetchLatestRelease } from './release.mjs';
 import { page } from './template.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = resolve(root, 'dist');
+const output = resolve(root, '..', 'dist');
 const source = resolve(root, 'src');
 const siteUrl = (process.env.SITE_URL || '').replace(/\/$/, '');
 

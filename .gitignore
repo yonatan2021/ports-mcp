@@ -61,7 +61,6 @@ $RECYCLE.BIN/
 
 # === Build & Dist ===
 dist/
-site/dist/
 build/
 !build/
 build/*

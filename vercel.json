@@ -1,6 +1,6 @@
 {
   "buildCommand": "npm run site:build",
-  "outputDirectory": "site/dist",
+  "outputDirectory": "dist",
   "cleanUrls": true,
   "headers": [
     {
